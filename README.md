@@ -15,8 +15,8 @@ This repo is the official implementation of "***SleePyCo: Automatic Sleep Scorin
 ## Updates & TODO Lists
 - [X] (2023.03.03) Official repository of SleePyCo is released
 - [X] Script for preprocessing Sleep-EDF
-- [] Config files for ablation studies
-- [] Scripts for preprocessing MASS, Physio2018, SHHS
+- [ ] Config files for ablation studies
+- [ ] Scripts for preprocessing MASS, Physio2018, SHHS
 
 
 ## Getting Started
