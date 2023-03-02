@@ -111,10 +111,10 @@ python test.py --config configs/SleePyCo-Transformer_SL-10_numScales-3_{DATASET_
 ```
 
 ## Authors
-- **SeongjuLee** [[GoogleScholar](https://scholar.google.com/citations?user=Q0LR04AAAAAJ&hl=ko)][[GitHub](https://github.com/SeongjuLee)]
-- **Yeonguk Yu** [[GitHub](https://github.com/SeongjuLee)]
-- **Seunghyeok Back** [[GitHub](https://github.com/SeungBack)]
-- **Hogeon Seo** [[GitHub](https://github.com/SeungBack)]
+- **SeongjuLee** [[GoogleScholar](https://scholar.google.com/citations?user=Q0LR04AAAAAJ&hl=ko)] [[GitHub](https://github.com/SeongjuLee)]
+- **Yeonguk Yu** [[GoogleScholar](https://scholar.google.com/citations?user=Ctm3p8wAAAAJ&hl=ko)] [[GitHub](https://github.com/birdomi)]
+- **Seunghyeok Back** [[GoogleScholar](https://scholar.google.com/citations?user=N9dLZH4AAAAJ&hl=ko)] [[GitHub](https://github.com/SeungBack)]
+- **Hogeon Seo** [[GoogleScholar](https://scholar.google.co.kr/citations?user=4llqDpUAAAAJ&hl=ko)] [[GitHub](https://github.com/hogeony)]
 - **Kyoobin Lee** (Corresponding Author) [[GoogleScholar](https://scholar.google.com/citations?hl=ko&user=QVihy5MAAAAJ)]
 
 ## License
