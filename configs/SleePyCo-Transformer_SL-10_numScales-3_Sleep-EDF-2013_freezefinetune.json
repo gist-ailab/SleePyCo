@@ -1,0 +1,46 @@
+{
+    "dataset": {
+        "name": "Sleep-EDF-2013",
+        "eeg_channel": "Fpz-Cz",
+        "num_splits": 20,
+        "seq_len": 10,
+        "target_idx": -1,
+        "root_dir": "./"
+    },
+
+    "backbone": {
+        "name": "SleePyCo",
+        "init_weights": false,
+        "dropout": false
+    },
+
+    "feature_pyramid": {
+        "dim": 128,
+        "num_scales": 3
+    },
+
+    "classifier": {
+        "name": "Transformer",
+        "model_dim": 128,
+        "feedforward_dim": 128,
+        "pool": "attn",
+        "dropout": false,
+        "num_classes": 5,
+        "pos_enc": {
+            "dropout": false
+        }
+    },
+
+    "training_params": {
+        "mode": "freezefinetune",
+        "max_epochs": 500,
+        "batch_size": 64,
+        "lr": 0.0005,
+        "weight_decay": 0.0001,
+        "val_period": 500,
+        "early_stopping": {
+            "mode": "min",
+            "patience": 20
+        }
+    }
+}
