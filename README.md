@@ -80,7 +80,7 @@ python prepare_sleep-edf-201X.py
         ├── ...
 ```
 
-## Train & Evaluation
+## Train & Evaluation (SleePyCo Training Framework)
 ### Contrastive Representation Learning
 ```
 python train_crl.py --config configs/SleePyCo-Transformer_SL-01_numScales-1_{DATASET_NAME}_pretrain.json --gpu $GPU_IDs
@@ -92,6 +92,11 @@ When one GeForce RTX 3090 GPU is used, it may requires 21.5 GB of GPU memory.
 python train_mtcl.py --config configs/SleePyCo-Transformer_SL-10_numScales-3_{DATASET_NAME}_freezefinetune.json --gpu $GPU_IDs
 ```
 When two GeForce RTX 3090 GPU is used, it may requires 16.7 GB of GPU memory each.
+
+## Train & Evaluation (From Scratch)
+```
+python train_mtcl.py --config configs/SleePyCo-Transformer_SL-10_numScales-3_{DATASET_NAME}_scratch.json --gpu $GPU_IDs
+```
 
 ## Main Results
 |   **Dataset**  | **Subset** | **Channel** | **ACC** | **MF1** | **Kappa** | **W** | **N1** | **N2** | **N3** | **REM** | **Checkpoints** |
