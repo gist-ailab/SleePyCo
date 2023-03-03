@@ -7,17 +7,18 @@ By Seongju Lee, Yeonguk Yu, Seunghyeok Back, Hogeon Seo, and Kyoobin Lee
 
 This repo is the official implementation of "***SleePyCo: Automatic Sleep Scoring with Feature Pyramid and Contrastive Learning***", submitted to IEEE Journal of Biomedical and Health Informatics.
 
+[[Arxiv](https://arxiv.org/abs/2209.09452)]
+
 ## Model Architecture
 ![model](./figures/model.png)
 
 ## Training Framework
 ![framework](./figures/framework.png)
 
-[[Arxiv](https://arxiv.org/abs/2209.09452)]
-
 ## Updates & TODO Lists
 - [X] (2023.03.03) Official repository of SleePyCo is released
 - [X] Script for preprocessing Sleep-EDF
+- [X] Config files for training from scratch
 - [ ] Config files for ablation studies
 - [ ] Scripts for preprocessing MASS, Physio2018, SHHS
 
