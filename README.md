@@ -1,5 +1,8 @@
 # SleePyCo
 
+[![PWC](https://img.shields.io/endpoint.svg?url=https://paperswithcode.com/badge/sleepyco-automatic-sleep-scoring-with-feature/sleep-stage-detection-on-sleep-edf)](https://paperswithcode.com/sota/sleep-stage-detection-on-sleep-edf?p=sleepyco-automatic-sleep-scoring-with-feature) [![PWC](https://img.shields.io/endpoint.svg?url=https://paperswithcode.com/badge/sleepyco-automatic-sleep-scoring-with-feature/sleep-stage-detection-on-sleep-edfx)](https://paperswithcode.com/sota/sleep-stage-detection-on-sleep-edfx?p=sleepyco-automatic-sleep-scoring-with-feature) [![PWC](https://img.shields.io/endpoint.svg?url=https://paperswithcode.com/badge/sleepyco-automatic-sleep-scoring-with-feature/sleep-stage-detection-on-mass-single-channel)](https://paperswithcode.com/sota/sleep-stage-detection-on-mass-single-channel?p=sleepyco-automatic-sleep-scoring-with-feature) [![PWC](https://img.shields.io/endpoint.svg?url=https://paperswithcode.com/badge/sleepyco-automatic-sleep-scoring-with-feature/sleep-stage-detection-on-physionet-challenge)](https://paperswithcode.com/sota/sleep-stage-detection-on-physionet-challenge?p=sleepyco-automatic-sleep-scoring-with-feature) [![PWC](https://img.shields.io/endpoint.svg?url=https://paperswithcode.com/badge/sleepyco-automatic-sleep-scoring-with-feature/sleep-stage-detection-on-shhs-single-channel)](https://paperswithcode.com/sota/sleep-stage-detection-on-shhs-single-channel?p=sleepyco-automatic-sleep-scoring-with-feature)
+
+
 By Seongju Lee, Yeonguk Yu, Seunghyeok Back, Hogeon Seo, and Kyoobin Lee
 
 This repo is the official implementation of "***SleePyCo: Automatic Sleep Scoring with Feature Pyramid and Contrastive Learning***", submitted to IEEE Journal of Biomedical and Health Informatics.
