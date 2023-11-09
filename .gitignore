@@ -129,10 +129,10 @@ dmypy.json
 .pyre/
 
 datasets/
-checkpoints/
 *.pt
 *.pth
 *.npz
 *.edf
 *.log
+*.zip
 results/
