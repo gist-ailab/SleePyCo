@@ -121,11 +121,13 @@ python train_mtcl.py --config configs/SleePyCo-Transformer_SL-10_numScales-3_{DA
 
 * You can download all checkpoints using following command:
   ```
+  cd checkpoints
   python download_checkpoints.py
   ```
 
 * You can also select checkpoints as follows:
   ```
+  cd checkpoints
   python download_checkpoints.py --datasets 'Sleep-EDF-2013' 'Sleep-EDF-2018'
   ```
 
