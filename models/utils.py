@@ -75,7 +75,6 @@ class Conv1d(_ConvNd):
                  padding='VALID', dilation=1, groups=1, bias=True, weight=None):
         kernel_size = _single(kernel_size)
         stride = _single(stride)
-        padding = _single(padding)
         dilation = _single(dilation)
         super(Conv1d, self).__init__(
             in_channels, out_channels, kernel_size, stride, padding, dilation,
@@ -102,7 +101,7 @@ def conv1d_same_padding(input, weight, bias=None, stride=1, padding='VALID', dil
         return argv_format
 
     stride, dilation = check_format(stride, dilation)
-
+    
     if padding == 'SAME':
         padding = 0
 

@@ -25,6 +25,7 @@ class ConvUnit(nn.Module):
 
         return x
 
+
 class UTimeEncoder(nn.Module):
     def __init__(self, config):
         super(UTimeEncoder, self).__init__()
@@ -48,15 +49,15 @@ class UTimeEncoder(nn.Module):
         self.conv5_1 = ConvUnit(in_channels=128, out_channels=256, kernel_size=5, stride=1, padding='SAME', dilation=2)
         self.conv5_2 = ConvUnit(in_channels=256, out_channels=256, kernel_size=5, stride=1, padding='SAME', dilation=2)
 
-        if self.training_mode == 'freezefinetune':
+        if self.training_mode == 'freezefinetune' or self.training_mode == 'scratch':
             self.fp_dim = config['feature_pyramid']['dim']
             self.num_scales = config['feature_pyramid']['num_scales']
             self.conv_c5 = nn.Conv1d(256, self.fp_dim, 1, 1, 0)
 
-            if self.n_anchor > 1:
+            if self.num_scales > 1:
                 self.conv_c4 = nn.Conv1d(128, self.fp_dim, 1, 1, 0)
             
-            if self.n_anchor > 2:
+            if self.num_scales > 2:
                 self.conv_c3 = nn.Conv1d(64, self.fp_dim, 1, 1, 0)
 
         if config['backbone']['init_weights']:

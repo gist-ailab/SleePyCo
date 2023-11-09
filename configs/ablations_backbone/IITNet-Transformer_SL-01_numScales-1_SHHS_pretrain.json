@@ -1,0 +1,35 @@
+{
+    "dataset": {
+        "name": "SHHS",
+        "eeg_channel": "C4-A1",
+        "num_splits": 1,
+        "seq_len": 1,
+        "target_idx": 0,
+        "root_dir": "./"
+    },
+
+    "backbone": {
+        "name": "IITNet",
+        "init_weights": false,
+        "dropout": false
+    },
+
+    "proj_head": {
+        "name": "MLP",
+        "dim": 128
+    },
+
+    "training_params": {
+        "mode": "pretrain",
+        "max_epochs": 500,
+        "batch_size": 1024,
+        "lr": 0.0005,
+        "weight_decay": 0.0001,
+        "temperature": 0.07,
+        "val_period": 500,
+        "early_stopping": {
+            "mode": "min",
+            "patience": 20
+        }
+    }
+}

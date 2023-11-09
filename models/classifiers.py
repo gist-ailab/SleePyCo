@@ -4,17 +4,9 @@ import torch.nn as nn
 
 
 feature_len_dict = {
-    'SleePyCo': [
-        [5, 24, 120],
-        [10, 48, 240],
-        [15, 72, 360],
-        [20, 96, 480],
-        [24, 120, 600],
-        [29, 144, 720],
-        [34, 168, 840],
-        [39, 192, 960],
-        [44, 216, 1080],
-        [48, 240, 1200]],
+    'SleePyCo': [[5, 24, 120], [10, 48, 240], [15, 72, 360], [20, 96, 480], [24, 120, 600], [29, 144, 720], [34, 168, 840], [39, 192, 960], [44, 216, 1080], [48, 240, 1200]],
+    'XSleepNet': [[6, 12, 24], [12, 24, 47], [18, 36, 71], [24, 47, 94], [30, 59, 118], [36, 71, 141], [42, 83, 165], [47, 94, 188], [53, 106, 211], [59, 118, 236]],
+    'UTime': [[7, 15, 62], [15, 31, 125], [23, 45, 187], [31, 62, 250], [39, 78, 312], [46, 93, 375], [54, 109, 437], [62, 125, 500], [70, 140, 562], [78, 156, 625]],
 }
 
 
@@ -36,7 +28,7 @@ class PlainRNN(nn.Module):
             batch_first=True,
             bidirectional=self.bidirectional
         )
-        self.fc = nn.Linear(self.hidden_dim * 2 if config['bidirectional'] else self.hidden_dim, self.num_classes)
+        self.fc = nn.Linear(self.hidden_dim * 2 if self.bidirectional else self.hidden_dim, self.num_classes)
 
     def init_hidden(self, x):
         h0 = torch.zeros((self.num_layers * (2 if self.bidirectional else 1), x.size(0), self.hidden_dim)).cuda()
@@ -94,7 +86,7 @@ class AttRNN(PlainRNN):
         super(AttRNN, self).__init__(config)
         # architecture
         self.fc = nn.Linear(self.hidden_dim, self.num_classes)
-        self.w_ha = nn.Linear(self.hidden_dim * 2 if config['bidirectional'] else self.hidden_dim, self.hidden_dim, bias=True)
+        self.w_ha = nn.Linear(self.hidden_dim * 2 if self.bidirectional else self.hidden_dim, self.hidden_dim, bias=True)
         self.w_att = nn.Linear(self.hidden_dim, 1, bias=False)
 
     def forward(self, x):
@@ -145,6 +137,7 @@ class PositionalEncoding(nn.Module):
     def __init__(self, config, in_features, out_features, dropout=0.1):
         super(PositionalEncoding, self).__init__()
         self.cfg = config['classifier']['pos_enc']
+        self.num_scales = config['feature_pyramid']['num_scales']
         
         if self.cfg['dropout']:
             self.dropout = nn.Dropout(p=dropout)
@@ -152,7 +145,10 @@ class PositionalEncoding(nn.Module):
         self.fc = nn.Linear(in_features=in_features, out_features=out_features)
         self.act_fn = nn.PReLU()
         
-        self.max_len = feature_len_dict[config['backbone']['name']][config['dataset']['seq_len'] - 1][config['feature_pyramid']['num_scales'] - 1]
+        if self.num_scales > 1:        
+            self.max_len = feature_len_dict[config['backbone']['name']][config['dataset']['seq_len'] - 1][config['feature_pyramid']['num_scales'] - 1]
+        else:
+            self.max_len = 5000
         
         print('[INFO] Maximum length of pos_enc: {}'.format(self.max_len))
 
@@ -167,8 +163,11 @@ class PositionalEncoding(nn.Module):
     def forward(self, x):
         x = self.act_fn(self.fc(x))
 
-        hop = self.max_len // x.size(0)
-        pe = self.pe[hop//2::hop, :]
+        if self.num_scales > 1:
+            hop = self.max_len // x.size(0)
+            pe = self.pe[hop//2::hop, :]
+        else:
+            pe = self.pe
 
         if pe.shape[0] != x.size(0):
             pe = pe[:x.size(0), :]

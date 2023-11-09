@@ -9,14 +9,14 @@
     },
 
     "backbone": {
-        "name": "SleePyCo",
+        "name": "UTime",
         "init_weights": false,
         "dropout": false
     },
 
     "feature_pyramid": {
         "dim": 128,
-        "num_scales": 3
+        "num_scales": 1
     },
 
     "classifier": {
@@ -32,7 +32,7 @@
     },
 
     "training_params": {
-        "mode": "scratch",
+        "mode": "freezefinetune",
         "max_epochs": 500,
         "batch_size": 64,
         "lr": 0.0005,

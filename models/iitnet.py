@@ -69,7 +69,7 @@ class IITNetBackbone(nn.Module):
         self.layer4 = self._make_layer(block, 32, self.layers[3], stride=2)
         self.maxpool = nn.MaxPool1d(3, 2, 1)
 
-        if self.training_mode == 'freezefinetune':
+        if self.training_mode == 'freezefinetune' or self.training_mode == 'scratch':
             self.fp_dim = config['feature_pyramid']['dim']
             self.num_scales = config['feature_pyramid']['num_scales']
             self.conv_c5 = nn.Conv1d(128, self.fp_dim, 1, 1, 0)

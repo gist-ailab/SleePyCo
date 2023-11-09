@@ -1,15 +1,15 @@
 {
     "dataset": {
-        "name": "Physio2018",
-        "eeg_channel": "C3-A2",
-        "num_splits": 5,
+        "name": "SHHS",
+        "eeg_channel": "C4-A1",
+        "num_splits": 1,
         "seq_len": 10,
         "target_idx": -1,
         "root_dir": "./"
     },
 
     "backbone": {
-        "name": "SleePyCo",
+        "name": "XSleepNet",
         "init_weights": false,
         "dropout": false
     },
@@ -32,12 +32,12 @@
     },
 
     "training_params": {
-        "mode": "scratch",
+        "mode": "freezefinetune",
         "max_epochs": 500,
         "batch_size": 64,
         "lr": 0.0005,
         "weight_decay": 0.0001,
-        "val_period": 500,
+        "val_period": 5000,
         "early_stopping": {
             "mode": "min",
             "patience": 20

@@ -19,7 +19,8 @@ This repo is the official implementation of "***SleePyCo: Automatic Sleep Scorin
 - [X] (2023.03.03) Official repository of SleePyCo is released
 - [X] Script for preprocessing Sleep-EDF
 - [X] Config files for training from scratch
-- [ ] Config files for ablation studies
+- [X] (2023.11.09) Config files for ablation studies
+- [X] Add TinySleepNet baseline and Fix minor errors
 - [ ] Scripts for preprocessing MASS, Physio2018, SHHS
 
 
@@ -89,13 +90,16 @@ python prepare_sleep-edf-201X.py
 ```
 python train_crl.py --config configs/SleePyCo-Transformer_SL-01_numScales-1_{DATASET_NAME}_pretrain.json --gpu $GPU_IDs
 ```
-When one GeForce RTX 3090 GPU is used, it may requires 21.5 GB of GPU memory.
+When one GeForce RTX 3090 GPU is used, it may requires 22.3 GB of GPU memory.
 
 ### Multiscale Temporal Context Learning
 ```
 python train_mtcl.py --config configs/SleePyCo-Transformer_SL-10_numScales-3_{DATASET_NAME}_freezefinetune.json --gpu $GPU_IDs
 ```
+
 When two GeForce RTX 3090 GPU is used, it may requires 16.7 GB of GPU memory each.
+
+If you use PyTorch $\geq$ 2.0.0, it may requires only 5.4 GB of GPU memory.
 
 ## Train & Evaluation (From Scratch)
 ```

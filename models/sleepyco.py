@@ -17,7 +17,7 @@ class SleePyCoBackbone(nn.Module):
         self.layer3 = self.make_layers(in_channels=192, out_channels=256, n_layers=3, maxpool_size=5)
         self.layer4 = self.make_layers(in_channels=256, out_channels=256, n_layers=3, maxpool_size=5)
 
-        if self.training_mode == 'freezefinetune':
+        if self.training_mode == 'freezefinetune' or self.training_mode == 'scratch':
             self.fp_dim = config['feature_pyramid']['dim']
             self.num_scales = config['feature_pyramid']['num_scales']
             self.conv_c5 = nn.Conv1d(256, self.fp_dim, 1, 1, 0)

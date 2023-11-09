@@ -6,6 +6,7 @@ from .xsleepnet import XSleepNetFeature
 from .iitnet import IITNetBackbone
 from .utime import UTimeEncoder
 from .deepsleepnet import DeepSleepNetFeature
+from .tinysleepnet import TinySleepNetFeature
 
 from .classifiers import get_classifier
 
@@ -15,7 +16,8 @@ last_chn_dict = {
     'XSleepNet': 256,
     'IITNet': 128,
     'UTime': 256,
-    'DeepSleepNet': 128
+    'DeepSleepNet': 128,
+    'TinySleepNet': 128
 }
 
 
@@ -39,6 +41,8 @@ class MainModel(nn.Module):
             self.feature = IITNetBackbone(self.cfg)
         elif self.bb_cfg['name'] == 'DeepSleepNet':
             self.feature = DeepSleepNetFeature(self.cfg)
+        elif self.bb_cfg['name'] == 'TinySleepNet':
+            self.feature = TinySleepNetFeature(self.cfg)
         else:
             raise NotImplementedError('backbone not supported: {}'.format(config['backbone']['name']))
 

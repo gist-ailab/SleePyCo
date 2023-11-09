@@ -8,6 +8,7 @@ class DeepSleepNetFeature(nn.Module):
         super(DeepSleepNetFeature, self).__init__()
 
         self.chn = 64
+        self.training_mode = config['training_params']['mode']
 
         # architecture
         self.dropout = nn.Dropout(p=0.5)
@@ -46,7 +47,7 @@ class DeepSleepNetFeature(nn.Module):
         self.compress = nn.Conv1d(self.chn*4, 128, 1, 1, 0)
         self.smooth = nn.Conv1d(128, 128, 3, 1, 1)
 
-        if self.training_mode == 'freezefinetune':
+        if self.training_mode == 'freezefinetune' or self.training_mode == 'scratch':
             self.fp_dim = config['feature_pyramid']['dim']
             self.num_scales = config['feature_pyramid']['num_scales']
             self.conv_c5 = nn.Conv1d(128, self.fp_dim, 1, 1, 0)

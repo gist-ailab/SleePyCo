@@ -18,7 +18,7 @@ class XSleepNetFeature(nn.Module):
         self.conv8 = self.make_layers(128, 128)
         self.conv9 = self.make_layers(128, 256)
 
-        if self.training_mode == 'freezefinetune':
+        if self.training_mode == 'freezefinetune' or self.training_mode == 'scratch':
             self.fp_dim = config['feature_pyramid']['dim']
             self.num_scales = config['feature_pyramid']['num_scales']
             self.conv_c5 = nn.Conv1d(256, self.fp_dim, 1, 1, 0)
