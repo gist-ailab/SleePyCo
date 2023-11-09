@@ -21,6 +21,7 @@ This repo is the official implementation of "***SleePyCo: Automatic Sleep Scorin
 - [X] Config files for training from scratch
 - [X] (2023.11.09) Config files for ablation studies
 - [X] Add TinySleepNet baseline and Fix minor errors
+- [X] You can download checkpoints more conveniently!
 - [ ] Scripts for preprocessing MASS, Physio2018, SHHS
 
 
@@ -116,9 +117,19 @@ python train_mtcl.py --config configs/SleePyCo-Transformer_SL-10_numScales-3_{DA
 |      SHHS      |   shhs-1   |    C4-A1    |   87.9  |   80.7  |   0.830   |  92.6 |  49.2  |  88.5  |  84.5  |   88.6  | [Link](https://drive.google.com/file/d/1FwjtO3JLd1Di0yRmz7g4B0niyY0gzQEd/view?usp=sharing) |
 
 ### How to reproduce results
-1. Create `checkpoints` directory.
-2. Download and extract checkpoint `zip` file under `checkpoints` directory.
-3. Evaluate the dataset using the following command.
+1. Download and extract checkpoint using `python download_checkpoints.py`.
+
+* You can download all checkpoints using following command:
+  ```
+  python download_checkpoints.py
+  ```
+
+* You can also select checkpoints as follows:
+  ```
+  python download_checkpoints.py --datasets 'Sleep-EDF-2013' 'Sleep-EDF-2018'
+  ```
+
+2. Evaluate the dataset using the following command.
 ```
 python test.py --config configs/SleePyCo-Transformer_SL-10_numScales-3_{DATASET_NAME}_freezefinetune.json --gpu $GPU_IDs
 ```
