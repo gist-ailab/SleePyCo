@@ -5,7 +5,7 @@
 
 By Seongju Lee, Yeonguk Yu, Seunghyeok Back, Hogeon Seo, and Kyoobin Lee
 
-This repo is the official implementation of "***SleePyCo: Automatic Sleep Scoring with Feature Pyramid and Contrastive Learning***", accepted to Expert Systems With Applications (I.F. 8.5).
+This repo is the official implementation of "***SleePyCo: Automatic Sleep Scoring with Feature Pyramid and Contrastive Learning***", accepted to ***Expert Systems With Applications (I.F. 8.5)***.
 
 [[Arxiv](https://arxiv.org/abs/2209.09452)] [[CodeOcean](https://codeocean.com/capsule/1417356/tree)]
 
