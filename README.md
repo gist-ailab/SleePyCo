@@ -7,7 +7,7 @@ By Seongju Lee, Yeonguk Yu, Seunghyeok Back, Hogeon Seo, and Kyoobin Lee
 
 This repo is the official implementation of "***SleePyCo: Automatic Sleep Scoring with Feature Pyramid and Contrastive Learning***", accepted to ***Expert Systems With Applications (I.F. 8.5)***.
 
-[[Arxiv](https://arxiv.org/abs/2209.09452)] [[CodeOcean](https://codeocean.com/capsule/1417356/tree)]
+[[Paper](https://doi.org/10.1016/j.eswa.2023.122551)] [[CodeOcean](https://codeocean.com/capsule/1417356/tree)]
 
 ## Model Architecture
 ![model](./figures/model.png)
@@ -22,6 +22,7 @@ This repo is the official implementation of "***SleePyCo: Automatic Sleep Scorin
 - [X] (2023.11.09) Config files for ablation studies
 - [X] Add TinySleepNet baseline and Fix minor errors
 - [X] You can download checkpoints more conveniently!
+- [X] (2023.11.18) :congratulations:Online publication is available!:congratulations:
 - [ ] Scripts for preprocessing MASS, Physio2018, SHHS
 
 
@@ -149,11 +150,16 @@ The source code of this repository is released only for academic use. See the [l
 
 ## Citation
 ```
-@article{lee2022sleepyco,
-  title={SleePyCo: Automatic Sleep Scoring with Feature Pyramid and Contrastive Learning},
-  author={Lee, Seongju and Yu, Yeonguk and Back, Seunghyeok and Seo, Hogeon and Lee, Kyoobin},
-  journal={arXiv preprint arXiv:2209.09452},
-  year={2022}
+@article{lee2024sleepyco,
+title = {SleePyCo: Automatic sleep scoring with feature pyramid and contrastive learning},
+journal = {Expert Systems with Applications},
+volume = {240},
+pages = {122551},
+year = {2024},
+issn = {0957-4174},
+doi = {https://doi.org/10.1016/j.eswa.2023.122551},
+url = {https://www.sciencedirect.com/science/article/pii/S0957417423030531},
+author = {Seongju Lee and Yeonguk Yu and Seunghyeok Back and Hogeon Seo and Kyoobin Lee}
 }
 ```
 
