@@ -22,7 +22,7 @@ This repo is the official implementation of "***SleePyCo: Automatic Sleep Scorin
 - [X] (2023.11.09) Config files for ablation studies
 - [X] Add TinySleepNet baseline and Fix minor errors
 - [X] You can download checkpoints more conveniently!
-- [X] (2023.11.18) :congratulations:Online publication is available!:congratulations:
+- [X] (2023.11.18) 🎉Online publication is available!🎉
 - [ ] Scripts for preprocessing MASS, Physio2018, SHHS
 
 
