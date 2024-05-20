@@ -135,4 +135,5 @@ datasets/
 *.edf
 *.log
 *.zip
+*.pdf
 results/

@@ -36,7 +36,7 @@ def main(fold, subject_id):
     plt.ylabel('Sleep Stage')
 
     plt.tight_layout()
-    plt.savefig('./{:02d}-{}.pdf'.format(fold, subject_id), format="pdf", bbox_inches="tight")
+    plt.savefig('./{:02d}-{}.png'.format(fold, subject_id), bbox_inches="tight")
 
     plt.show()
 

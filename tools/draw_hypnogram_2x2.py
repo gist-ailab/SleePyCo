@@ -63,7 +63,7 @@ def main():
     create_subtitle(fig, grid[1, ::], 'Hypongram Scored by SleePyCo')
 
     fig.tight_layout()
-    fig.savefig('./hypnogram.pdf', format="pdf", bbox_inches="tight")
+    fig.savefig('./hypnogram.png', bbox_inches="tight")
 
     plt.show()
 
