@@ -23,6 +23,8 @@ This repo is the official implementation of "***SleePyCo: Automatic Sleep Scorin
 - [X] Add TinySleepNet baseline and Fix minor errors
 - [X] You can download checkpoints more conveniently!
 - [X] (2023.11.18) 🎉Online publication is available!🎉
+- [X] (2024.05.20) Add source code for plot hypnogram in ```./tools```
+- [X] (2024.05.20) Add source code for test on a sample of custom data, refer to ```test_custom.py```
 - [ ] Scripts for preprocessing MASS, Physio2018, SHHS
 
 
@@ -136,6 +138,26 @@ python train_mtcl.py --config configs/SleePyCo-Transformer_SL-10_numScales-3_{DA
 ```
 python test.py --config configs/SleePyCo-Transformer_SL-10_numScales-3_{DATASET_NAME}_freezefinetune.json --gpu $GPU_IDs
 ```
+
+## How to test on custom data
+1. Prepare custom data with the numpy array of shape ```(1, 1, 30000)```. It represents 10 input epochs.
+
+2. Replace line 67 in ```test_custom.py``` to load your custom data.
+
+3. Choose the pretrained dataset and fold to load checkpoint and run following command.
+
+```
+python test_custom.py --config configs/SleePyCo-Transformer_SL-10_numScales-3_{DATASET_NAME}_freezefinetune.json --fold $FOLD --gpu $GPU_IDs
+```
+
+## Troubleshooting in download ehckpoints
+If you have an error like ```Access denied with the following error:...```, install pre-released version of ```gdown``` using following command:
+
+```
+pip install -U --no-cache-dir gdown --pre
+```
+
+
 
 ## Authors
 - **SeongjuLee** [[GoogleScholar](https://scholar.google.com/citations?user=Q0LR04AAAAAJ&hl=ko)] [[GitHub](https://github.com/SeongjuLee)]
