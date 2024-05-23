@@ -150,7 +150,7 @@ python test.py --config configs/SleePyCo-Transformer_SL-10_numScales-3_{DATASET_
 python test_custom.py --config configs/SleePyCo-Transformer_SL-10_numScales-3_{DATASET_NAME}_freezefinetune.json --fold $FOLD --gpu $GPU_IDs
 ```
 
-## Troubleshooting in download ehckpoints
+## Troubleshooting in download checkpoints
 If you have an error like ```Access denied with the following error:...```, install pre-released version of ```gdown``` using following command:
 
 ```
