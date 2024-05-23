@@ -24,7 +24,7 @@ if args.datasets == 'all' or 'Sleep-EDF-2018' in args.datasets:
 # MASS
 if args.datasets == 'all' or 'MASS' in args.datasets:
     file_id = '16kPPhW04g5swGQeOJs8aRJOI13wSEKhI'
-    config_name = 'SleePyCo-Transformer_SL-10_numScales-3_MASS-2018_freezefinetune'
+    config_name = 'SleePyCo-Transformer_SL-10_numScales-3_MASS_freezefinetune'
     gdown.download(id=file_id, output=config_name + '.zip', quiet=False)
     os.system('unzip {}.zip -d {}'.format(config_name, config_name))
 

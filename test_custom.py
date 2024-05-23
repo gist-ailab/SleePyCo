@@ -53,6 +53,9 @@ class OneFoldTrainer:
 
         outputs = self.model(inputs)
         outputs_sum = torch.zeros_like(outputs[0])
+        
+        for output in outputs:
+            outputs_sum += output
 
         predicted = torch.argmax(outputs_sum, 1)
         
@@ -80,7 +83,7 @@ def main():
     os.environ["CUDA_VISIBLE_DEVICES"] = args.gpu
 
     # For reproducibility
-    set_random_seed(args.seed, use_cuda=True)
+    # set_random_seed(args.seed, use_cuda=True)
 
     with open(args.config) as config_file:
         config = json.load(config_file)
