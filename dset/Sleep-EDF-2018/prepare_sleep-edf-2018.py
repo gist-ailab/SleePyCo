@@ -146,7 +146,7 @@ def main():
             duration_epoch = int(duration_sec / epoch_duration)
 
             # Generate sleep stage labels
-            label_epoch = np.ones(duration_epoch, dtype=np.int) * label
+            label_epoch = np.ones(duration_epoch, dtype=np.int32) * label
             labels.append(label_epoch)
 
             total_duration += duration_sec
