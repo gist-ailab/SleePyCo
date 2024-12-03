@@ -1,0 +1,28 @@
+name: sleepnet
+channels:
+  - pytorch
+  - nvidia
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.12
+  - numpy
+  - pandas
+  - matplotlib
+  - seaborn
+  - scipy
+  - scikit-learn
+  - numba
+  - joblib
+  - tqdm
+  - termcolor
+  - threadpoolctl
+  - pytorch
+  - torchvision
+  - torchaudio
+  - pytorch-cuda=12.1
+  - umap-learn
+  - pyedflib
+  - pynndescent
+  - gdown
+  - tensorboard
