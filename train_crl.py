@@ -1,9 +1,7 @@
-import os
 import json
 import argparse
 import warnings
 
-import torch
 import torch.optim as optim
 from torch.utils.data import DataLoader
 
@@ -22,8 +20,9 @@ class OneFoldTrainer:
         self.tp_cfg = config['training_params']
         self.es_cfg = self.tp_cfg['early_stopping']
         
-        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        self.device = get_device(preference="cuda")
         print('[INFO] Config name: {}'.format(config['name']))
+        print('[INFO] Device: {}'.format(str(self.device)))
         
         self.train_iter = 0
         self.model = self.build_model()
