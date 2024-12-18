@@ -12,15 +12,19 @@ class transformer_backbone(nn.Module):
     def __init__(self, fs: int = 100, second: int = 30, time_window: int = 5, time_step: float = 0.5,
                  encoder_embed_dim = 256, encoder_heads: int = 6, encoder_depths: int = 8,
                  decoder_embed_dim: int = 128, decoder_heads: int = 4, decoder_depths: int = 8,
-                 projection_hidden: List = [1024, 512], temperature=0.01):
+                 projection_hidden: List = [1024, 512], temperature=0.01, use_sig_backbone=True, input_size=500):
         super().__init__()
         self.fs, self.second = fs, second
         self.time_window = time_window
         self.time_step = time_step
+        self.use_sig_backbone = use_sig_backbone
 
         self.num_patches, _ = frame_size(fs=fs, second=second, time_window=time_window, time_step=time_step)
         self.frame_backbone = SignalBackBone(fs=self.fs, window=self.time_window)
-        self.autoencoder = AutoEncoderViT(input_size=self.frame_backbone.feature_num,
+        self.input_size = self.frame_backbone.feature_num
+        if not use_sig_backbone:
+            self.input_size = input_size
+        self.autoencoder = AutoEncoderViT(input_size=self.input_size,
                                                 encoder_embed_dim=encoder_embed_dim, num_patches=self.num_patches,
                                                 encoder_heads=encoder_heads, encoder_depths=encoder_depths,
                                                 decoder_embed_dim=decoder_embed_dim, decoder_heads=decoder_heads,
@@ -39,16 +43,17 @@ class transformer_backbone(nn.Module):
         self.projectors_bn = nn.BatchNorm1d(projection_hidden[-1], affine=False)
         self.norm_pix_loss = False
 
-    def forward(self, x: torch.Tensor, mask_ratio: float = 0.5) -> (torch.Tensor, torch.Tensor):
+    def forward(self, x: torch.Tensor) -> (torch.Tensor, torch.Tensor):
         x = self.make_frame(x)
-        x = self.frame_backbone(x)
+        if self.use_sig_backbone:
+            x = self.frame_backbone(x)
 
         # Masked Prediction
-        latent1, pred1, mask1 = self.autoencoder(x, mask_ratio)
-        latent2, pred2, mask2 = self.autoencoder(x, mask_ratio)
+        latent1, pred1 = self.autoencoder(x)
+        latent2, pred2 = self.autoencoder(x)
         o1, o2 = latent1[:, :1, :].squeeze(), latent2[:, :1, :].squeeze()
-        recon_loss1 = self.forward_mae_loss(x, pred1, mask1)
-        recon_loss2 = self.forward_mae_loss(x, pred2, mask2)
+        recon_loss1 = self.forward_mae_loss(x, pred1, torch.ones(pred1.size))
+        recon_loss2 = self.forward_mae_loss(x, pred2, np.ones(pred1.size))
         recon_loss = recon_loss1 + recon_loss2
 
         # Contrastive Learning
@@ -59,10 +64,20 @@ class transformer_backbone(nn.Module):
 
     def forward_latent(self, x: torch.Tensor):
         x = self.make_frame(x)
-        x = self.frame_backbone(x)
-        latent = self.autoencoder.forward_encoder(x, mask_ratio=0)[0]
+        if self.use_sig_backbone:
+            x = self.frame_backbone(x)
+        latent = self.autoencoder.forward_encoder(x)
         latent_o = latent[:, :1, :].squeeze()
         return latent_o
+    
+    def forward_predict(self, x: torch.Tensor):
+        x = self.make_frame(x)
+        if self.use_sig_backbone:
+            x = self.frame_backbone(x)
+        
+        latent, pred = self.autoencoder(x)
+        latent_o = latent[:, :1, :].squeeze()
+        return latent, pred
 
     def forward_mae_loss(self,
                          real: torch.Tensor,
@@ -113,5 +128,10 @@ if __name__ == '__main__':
     m0 = transformer_backbone(fs=100, second=30, time_window=5, time_step=0.5,
                   encoder_embed_dim=256, encoder_depths=6, encoder_heads=8,
                   decoder_embed_dim=128, decoder_heads=4, decoder_depths=8,
-                  projection_hidden=[1024, 512])
-    m0.forward(x0, mask_ratio=0.5)
+                  projection_hidden=[1024, 512], use_sig_backbone=True)
+    m1 = transformer_backbone(fs=100, second=30, time_window=5, time_step=0.5,
+                  encoder_embed_dim=256, encoder_depths=6, encoder_heads=8,
+                  decoder_embed_dim=128, decoder_heads=4, decoder_depths=8,
+                  projection_hidden=[1024, 512], use_sig_backbone=False)
+    latent, pred = m1.forward_predict(x0)
+    print(f"{latent.shape}, {pred.shape}")

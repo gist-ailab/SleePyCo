@@ -2,7 +2,6 @@
 import torch
 import torch.nn as nn
 
-
 class SignalBackBone(nn.Module):
     def __init__(self, fs: int, window: int):
         super().__init__()

@@ -159,3 +159,9 @@ def logsumexp_2d(tensor):
     s, _ = torch.max(tensor_flatten, dim=2, keepdim=True)
     outputs = s + (tensor_flatten - s).exp().sum(dim=2, keepdim=True).log()
     return outputs
+
+if __name__ == '__main__':
+    x0 = torch.randn((50, 3000))
+    m0 = CNNBackbone(pretrain=True, init_weights=False, num_scales=1)
+    forw = m0.forward(x0)
+    print(forw)
