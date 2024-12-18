@@ -6,6 +6,7 @@ import warnings
 import torch
 import torch.optim as optim
 from torch.utils.data import DataLoader
+from torch.utils.tensorboard import SummaryWriter  # Import TensorBoard writer
 
 from utils import *
 from loss import SupConLoss
@@ -36,6 +37,9 @@ class OneFoldTrainer:
         self.ckpt_name = 'ckpt_fold-{0:02d}.pth'.format(self.fold)
         self.early_stopping = EarlyStopping(patience=self.es_cfg['patience'], verbose=True, ckpt_path=self.ckpt_path, ckpt_name=self.ckpt_name, mode=self.es_cfg['mode'])
 
+        # Initialize TensorBoard writer
+        self.writer = SummaryWriter(log_dir=os.path.join("logs", config['name'], f"fold-{fold}"))
+        
     def build_model(self):
         model = MainModel(self.cfg)
         print('[INFO] Number of params of model: ', sum(p.numel() for p in model.parameters() if p.requires_grad))
@@ -55,7 +59,7 @@ class OneFoldTrainer:
 
         return {'train': train_loader, 'val': val_loader}
 
-    def train_one_epoch(self):
+    def train_one_epoch(self, epoch):
         self.model.train()
         train_loss = 0
 
@@ -77,18 +81,24 @@ class OneFoldTrainer:
             train_loss += loss.item()
             self.train_iter += 1
 
-            progress_bar(i, len(self.loader_dict['train']), 'Lr: %.4e | Loss: %.3f' %(get_lr(self.optimizer), train_loss / (i + 1)))
+            progress_bar(i, len(self.loader_dict['train']), 'Lr: %.4e | Loss: %.3f' % (get_lr(self.optimizer), train_loss / (i + 1)))
 
-            if self.train_iter % self.tp_cfg['val_period'] == 0:
-                print('')
-                val_loss = self.evaluate(mode='val')
-                self.early_stopping(None, val_loss, self.model)
-                self.model.train()
-                if self.early_stopping.early_stop:
-                    break
+        # Log average training loss to TensorBoard
+        avg_train_loss = train_loss / len(self.loader_dict['train'])
+        self.writer.add_scalar("Loss/Train", avg_train_loss, epoch)
+        print(f"\n[INFO] Epoch {epoch}, Training Loss: {avg_train_loss:.4f}")
+
+        if self.train_iter % self.tp_cfg['val_period'] == 0:
+            print('')
+            val_loss = self.evaluate(mode='val', epoch=epoch)
+            self.early_stopping(None, val_loss, self.model)
+            self.model.train()
+            if self.early_stopping.early_stop:
+                return True
+        return False
 
     @torch.no_grad()
-    def evaluate(self, mode):
+    def evaluate(self, mode, epoch=None):
         self.model.eval()
         eval_loss = 0
 
@@ -104,16 +114,27 @@ class OneFoldTrainer:
 
             eval_loss += loss.item()
             
-            progress_bar(i, len(self.loader_dict[mode]), 'Lr: %.4e | Loss: %.3f' %(get_lr(self.optimizer), eval_loss / (i + 1)))
+            progress_bar(i, len(self.loader_dict[mode]), 'Lr: %.4e | Loss: %.3f' % (get_lr(self.optimizer), eval_loss / (i + 1)))
 
-        return eval_loss
+        avg_eval_loss = eval_loss / len(self.loader_dict[mode])
+        print(f"[INFO] {mode.capitalize()} Loss: {avg_eval_loss:.4f}")
+
+        # Log validation loss to TensorBoard
+        if epoch is not None:
+            self.writer.add_scalar(f"Loss/{mode.capitalize()}", avg_eval_loss, epoch)
+
+        return avg_eval_loss
     
     def run(self):
         for epoch in range(self.tp_cfg['max_epochs']):
             print('\n[INFO] Fold: {}, Epoch: {}'.format(self.fold, epoch))
-            self.train_one_epoch()
-            if self.early_stopping.early_stop:
+            early_stop = self.train_one_epoch(epoch)
+            if early_stop:
                 break
+
+        # Close TensorBoard writer at the end
+        self.writer.close()
+
 
 def main():
     warnings.filterwarnings("ignore", category=DeprecationWarning) 
