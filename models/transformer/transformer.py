@@ -35,7 +35,6 @@ class AutoEncoderViT(nn.Module):
 
         # MAE Decoder
         self.decoder_embed = nn.Linear(encoder_embed_dim, decoder_embed_dim, bias=True)
-        self.mask_token = nn.Parameter(torch.zeros(1, 1, decoder_embed_dim))
         self.decoder_pos_embed = nn.Parameter(torch.randn(1, self.num_patches, decoder_embed_dim), requires_grad=False)
         self.decoder_block = nn.ModuleList([
             Block(decoder_embed_dim, decoder_heads, self.mlp_ratio, qkv_bias=True,
@@ -47,20 +46,17 @@ class AutoEncoderViT(nn.Module):
         if initialize_weights:
             self.initialize_weights()
 
-    def forward(self, x, mask_ratio=0.8):
-        latent, mask, ids_restore = self.forward_encoder(x, mask_ratio)
-        pred = self.forward_decoder(latent, ids_restore)
-        return latent, pred, mask
+    def forward(self, x):
+        latent = self.forward_encoder(x)
+        pred = self.forward_decoder(latent)
+        return latent, pred
 
-    def forward_encoder(self, x: torch.Tensor, mask_ratio: float = 0.5):
+    def forward_encoder(self, x: torch.Tensor):
         # embed patches
         x = self.patch_embed(x)
 
         # add pos embed w/o cls token
         x = x + self.pos_embed[:, 1:, :]
-
-        # masking: length -> length * mask_ratio
-        x, mask, ids_restore = self.random_masking(x, mask_ratio)
 
         # append cls token
         cls_token = self.cls_token + self.pos_embed[:, :1, :]
@@ -72,16 +68,11 @@ class AutoEncoderViT(nn.Module):
             x = block(x)
 
         x = self.encoder_norm(x)
-        return x, mask, ids_restore
+        return x
 
-    def forward_decoder(self, x, ids_restore: torch.Tensor):
+    def forward_decoder(self, x):
         # embed tokens
         x = self.decoder_embed(x[:, 1:, :])
-
-        # append mask tokens to sequence
-        mask_tokens = self.mask_token.repeat(x.shape[0], ids_restore.shape[1] - x.shape[1], 1)
-        x_ = torch.cat([x, mask_tokens], dim=1)  # no cls token
-        x = torch.gather(x_, dim=1, index=ids_restore.unsqueeze(-1).repeat(1, 1, x.shape[2]))  # unshuffle
 
         # add pos embed
         x = x + self.decoder_pos_embed
@@ -110,7 +101,6 @@ class AutoEncoderViT(nn.Module):
 
         # timm's trunc_normal_(std=.02) is effectively normal_(std=0.02) as cutoff is too big (2.)
         torch.nn.init.normal_(self.cls_token, std=.02)
-        torch.nn.init.normal_(self.mask_token, std=.02)
 
         # initialize nn.Linear and nn.LayerNorm
         self.apply(self._init_weights)
@@ -127,7 +117,7 @@ class AutoEncoderViT(nn.Module):
             nn.init.constant_(m.weight, 1.0)
 
 
-class NeuroNetEncoderWrapper(nn.Module):
+class EncoderWrapper(nn.Module):
     def __init__(self, fs: int, second: int, time_window: int, time_step: float,
                  frame_backbone, patch_embed, encoder_block, encoder_norm, cls_token, pos_embed,
                  final_length):
