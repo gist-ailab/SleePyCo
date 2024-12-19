@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
 
 class SupConLoss(nn.Module):
@@ -89,3 +90,31 @@ class SupConLoss(nn.Module):
         loss = loss.view(anchor_count, batch_size).mean()
 
         return loss
+
+
+class ReconstructionLoss(nn.Module):
+    """
+    Basic reconstruction loss as in MAEEG (https://arxiv.org/pdf/2211.02625).
+    """
+    def __init__(self):
+        super(ReconstructionLoss, self).__init__()
+
+    def forward(self, inputs: torch.Tensor, outputs: torch.Tensor, labels: torch.Tensor = None) -> torch.Tensor:
+        """
+        Goal: take single channel EEG epoch and the reconstructed output (after a Masked AutoEncoder for ex.) and calculate
+        a normalized reconstruction loss.
+
+        inputs: raw EEG epoch from dataset which was input to model
+        outputs: reconstructed EEG epoch from model
+        labels: ground truth epoch from dataset but these are not needed for this loss
+        """
+        # TODO: check format of data
+        cos_sim = F.cosine_similarity(inputs, outputs, dim=1) # TODO: dimension check!
+        return 1 - cos_sim
+
+
+LOSS_MAP = {
+    "supcon_sleepyco": SupConLoss,
+    "reconstruction_loss_maeeg": ReconstructionLoss,
+}
+SUPPORTED_LOSS_FUNCTIONS = list(LOSS_MAP.keys())

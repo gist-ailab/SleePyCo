@@ -1,0 +1,51 @@
+{
+    "_comment": "Pretraining Encoder backbone using MaskedPrediction. Run train_mp.py script with this config",
+
+    "dataset": {
+        "name": "Physio2018",
+        "eeg_channel": "C3-A2",
+        "num_splits": 5,
+        "seq_len": 1,
+        "target_idx": 0,
+        "root_dir": "./"
+    },
+
+    "backbone": {
+        "name": "Transformer",
+        "fs": 100,
+        "second": 30,
+        "time_window": 5,
+        "time_step": 0.5,
+        "encoder_embed_dim": 256,
+        "encoder_heads": 6,
+        "encoder_depths": 8,
+        "decoder_embed_dim": 128,
+        "decoder_heads": 4,
+        "decoder_depths": 8,
+        "projection_hidden": [1024, 512],
+        "use_sig_backbone": true,
+        "input_size": 500
+},
+
+
+    "proj_head": {
+        "name": "MLP",
+        "dim": 128
+    },
+
+    "training_params": {
+        "_comment": "All default sleepyco settings despite 'mode'. 'pretrain-mp' is passed to dataloader to use the base EEG epochs, not two-view as in 'pretrain'",
+        "mode": "pretrain-mp",
+        "loss": "reconstruction_loss_maeeg",
+        "max_epochs": 500,
+        "batch_size": 1024,
+        "lr": 0.0005,
+        "weight_decay": 0.0001,
+        "temperature": 0.07,
+        "val_period": 50,
+        "early_stopping": {
+            "mode": "min",
+            "patience": 20
+        }
+    }
+}
