@@ -1,6 +1,76 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+    
+"""
+CNN structure taken from https://github.com/gist-ailab/SleePyCo
+
+Returns:
+    pretrain: flag to only return the last feature layer of the pyramid
+    init_weights: initialise weights by constant
+    num_scales: values 1-3 how many of the feature pyramid layers are returned
+    
+    Function forward calls the whole autoencoder structure,
+    function forwards_encoder only calls the encoder structure
+"""
+class CNN(nn.Module):
+    
+    def __init__(self, pretrain, init_weights=False, num_scales=1):
+        super(CNN, self).__init__()
+
+        self.pretrain = pretrain
+        # architecture
+        arch_args = [[1, 64, 128, 192, 256], [64, 128, 192, 256, 256], [2, 2, 3, 3, 3], [None, 5, 5, 5, 4]]
+        self.encoder = Encoder(*arch_args, use_gate=True)
+        self.decoder = Decoder(*arch_args, use_gate=True)
+            
+        self.fp_dim = 128
+        self.num_scales = num_scales
+        self.conv_c5 = nn.Conv1d(256, self.fp_dim, 1, 1, 0)
+
+        if self.num_scales > 1:
+            self.conv_c4 = nn.Conv1d(256, self.fp_dim, 1, 1, 0)
+        
+        if self.num_scales > 2:
+            self.conv_c3 = nn.Conv1d(192, self.fp_dim, 1, 1, 0)
+        
+        if init_weights:
+            self._initialize_weights()
+
+    def _initialize_weights(self):
+        for m in self.modules():
+            if isinstance(m, nn.Conv1d):
+                nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
+                if m.bias is not None:
+                    nn.init.constant_(m.bias, 0)
+            elif isinstance(m, nn.BatchNorm1d):
+                nn.init.constant_(m.weight, 1)
+                nn.init.constant_(m.bias, 0)
+
+    def forward(self, x):
+
+        _, _, c5 = self.encoder(x)
+        return self.decoder(c5)
+    
+    def forward_encoder(self, x):
+        out = []
+
+        c3, c4, c5 = self.encoder(x)
+
+        if self.pretrain:
+            out.append(c5)
+        else:
+            p5 = self.conv_c5(c5)
+            out.append(p5)
+            if self.num_scales > 1:
+                p4 = self.conv_c4(c4)
+                out.append(p4)
+            if self.num_scales > 2:
+                p3 = self.conv_c3(c3)
+                out.append(p3)
+        
+        return out #(pretrain ? 1 : num_scales, c5.shape)
+
 class Decoder(nn.Module):
     def __init__(self, in_channels: list, out_channels: list, n_layers: list, maxpool_size: list, use_gate: bool):
         super(Decoder, self).__init__()
@@ -99,65 +169,7 @@ class EncoderBlock(nn.Module):
             x = self.gate(x)
         return self.prelu(x)
         
-    
-class CNN(nn.Module):
-    
-    def __init__(self, pretrain, init_weights=False, num_scales=1):
-        super(CNN, self).__init__()
-
-        self.pretrain = pretrain
-        # architecture
-        arch_args = [[1, 64, 128, 192, 256], [64, 128, 192, 256, 256], [2, 2, 3, 3, 3], [None, 5, 5, 5, 4]]
-        self.encoder = Encoder(*arch_args, use_gate=True)
-        self.decoder = Decoder(*arch_args, use_gate=True)
-            
-        self.fp_dim = 128
-        self.num_scales = num_scales
-        self.conv_c5 = nn.Conv1d(256, self.fp_dim, 1, 1, 0)
-
-        if self.num_scales > 1:
-            self.conv_c4 = nn.Conv1d(256, self.fp_dim, 1, 1, 0)
         
-        if self.num_scales > 2:
-            self.conv_c3 = nn.Conv1d(192, self.fp_dim, 1, 1, 0)
-        
-        if init_weights:
-            self._initialize_weights()
-
-    def _initialize_weights(self):
-        for m in self.modules():
-            if isinstance(m, nn.Conv1d):
-                nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
-                if m.bias is not None:
-                    nn.init.constant_(m.bias, 0)
-            elif isinstance(m, nn.BatchNorm1d):
-                nn.init.constant_(m.weight, 1)
-                nn.init.constant_(m.bias, 0)
-
-    def forward(self, x):
-
-        _, _, c5 = self.encoder(x)
-        return self.decoder(c5)
-    
-    def forward_encoder(self, x):
-        out = []
-
-        c3, c4, c5 = self.encoder(x)
-
-        if self.pretrain:
-            out.append(c5)
-        else:
-            p5 = self.conv_c5(c5)
-            out.append(p5)
-            if self.num_scales > 1:
-                p4 = self.conv_c4(c4)
-                out.append(p4)
-            if self.num_scales > 2:
-                p3 = self.conv_c3(c3)
-                out.append(p3)
-        
-        return out #(pretrain ? 1 : num_scales, c5.shape)
-
 class MaxPool1d(nn.Module):
     def __init__(self, maxpool_size):
         super(MaxPool1d, self).__init__()
