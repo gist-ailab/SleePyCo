@@ -1,15 +1,64 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+class Decoder(nn.Module):
+    def __init__(self, in_channels: list, out_channels: list, n_layers: list, maxpool_size: list, use_gate: bool):
+        super(Decoder, self).__init__()
+        self.init_layer = DecoderBlock(in_channels=in_channels[0], out_channels=out_channels[0], n_layers=n_layers[0], maxpool_size=maxpool_size[0], use_gate=use_gate, first=True)
+        self.layer1 = DecoderBlock(in_channels=in_channels[1], out_channels=out_channels[1], n_layers=n_layers[1], maxpool_size=maxpool_size[1], use_gate=use_gate)
+        self.layer2 = DecoderBlock(in_channels=in_channels[2], out_channels=out_channels[2], n_layers=n_layers[2], maxpool_size=maxpool_size[2], use_gate=use_gate)
+        self.layer3 = DecoderBlock(in_channels=in_channels[3], out_channels=out_channels[3], n_layers=n_layers[3], maxpool_size=maxpool_size[3], use_gate=use_gate)
+        self.layer4 = DecoderBlock(in_channels=in_channels[4], out_channels=out_channels[4], n_layers=n_layers[4], maxpool_size=maxpool_size[4], use_gate=use_gate)
+        
+    def forward(self, x: torch.Tensor):
+        c5 = self.layer4(x)
+        c4 = self.layer3(c5)
+        c3 = self.layer2(c4)
+        c2 = self.layer1(c3)
+        c1 = self.init_layer(c2)
+        
+        print(f"Decoder with shapes {c5.shape}, {c4.shape}, {c3.shape}, {c2.shape}, {c1.shape}")
+        
+        return c1 
 
+class DecoderBlock(nn.Module):
+    def __init__(self, in_channels, out_channels, n_layers, maxpool_size, use_gate, first=False):
+        super(DecoderBlock, self).__init__()
+        self.use_gate = use_gate
+        self.first = first
+        self.transConv = nn.ConvTranspose1d(out_channels, out_channels, maxpool_size, maxpool_size) if not first else None
+        self.layers = self.make_layers(in_channels, out_channels, n_layers)
+        self.prelu = nn.PReLU()
+    
+    def make_layers(self, out_channels, in_channels, n_layers):
+        layers = []
+        for i in range(n_layers):
+            conv1d = nn.Conv1d(in_channels, out_channels, kernel_size=3, padding=1)
+            layers += [conv1d, nn.BatchNorm1d(out_channels)]
+            if i == n_layers - 1:
+                self.gate = ChannelGate(in_channels)
+            if i != n_layers - 1:
+                layers += [nn.PReLU()]
+            in_channels = out_channels
+        return nn.Sequential(*layers)
+            
+    def forward(self, x: torch.Tensor):
+        
+        if not self.first:
+            x = self.transConv(x)
+        x = self.layers(x)
+        if self.use_gate:
+            x = self.gate(x)
+        return self.prelu(x)
+        
 class Encoder(nn.Module):
-    def __init__(self, in_channels: list, out_channels: list, n_layers: list, maxpool_size: list):
+    def __init__(self, in_channels: list, out_channels: list, n_layers: list, maxpool_size: list, use_gate: bool):
         super(Encoder, self).__init__()
-        self.init_layer = EncoderBlock(in_channels=in_channels[0], out_channels=out_channels[0], n_layers=n_layers[0], maxpool_size=maxpool_size[0], first=True)
-        self.layer1 = EncoderBlock(in_channels=in_channels[1], out_channels=out_channels[1], n_layers=n_layers[1], maxpool_size=maxpool_size[1])
-        self.layer2 = EncoderBlock(in_channels=in_channels[2], out_channels=out_channels[2], n_layers=n_layers[2], maxpool_size=maxpool_size[2])
-        self.layer3 = EncoderBlock(in_channels=in_channels[3], out_channels=out_channels[3], n_layers=n_layers[3], maxpool_size=maxpool_size[3])
-        self.layer4 = EncoderBlock(in_channels=in_channels[4], out_channels=out_channels[4], n_layers=n_layers[4], maxpool_size=maxpool_size[4])
+        self.init_layer = EncoderBlock(in_channels=in_channels[0], out_channels=out_channels[0], n_layers=n_layers[0], maxpool_size=maxpool_size[0], use_gate=use_gate, first=True)
+        self.layer1 = EncoderBlock(in_channels=in_channels[1], out_channels=out_channels[1], n_layers=n_layers[1], maxpool_size=maxpool_size[1], use_gate=use_gate)
+        self.layer2 = EncoderBlock(in_channels=in_channels[2], out_channels=out_channels[2], n_layers=n_layers[2], maxpool_size=maxpool_size[2], use_gate=use_gate)
+        self.layer3 = EncoderBlock(in_channels=in_channels[3], out_channels=out_channels[3], n_layers=n_layers[3], maxpool_size=maxpool_size[3], use_gate=use_gate)
+        self.layer4 = EncoderBlock(in_channels=in_channels[4], out_channels=out_channels[4], n_layers=n_layers[4], maxpool_size=maxpool_size[4], use_gate=use_gate)
         
     def forward(self, x: torch.Tensor):
         c1 = self.init_layer(x)
@@ -17,16 +66,18 @@ class Encoder(nn.Module):
         c3 = self.layer2(c2)
         c4 = self.layer3(c3)
         c5 = self.layer4(c4)
+        print(f"Encoder with shapes {c1.shape}, {c2.shape}, {c3.shape}, {c4.shape}, {c5.shape}")
         
         return c3, c4, c5 
         
 class EncoderBlock(nn.Module):
-    def __init__(self, in_channels, out_channels, n_layers, maxpool_size, first=False):
+    def __init__(self, in_channels, out_channels, n_layers, maxpool_size, use_gate, first=False):
         super(EncoderBlock, self).__init__()
         self.first = first
         self.pool = MaxPool1d(maxpool_size)
         self.layers = self.make_layers(in_channels, out_channels, n_layers)
         self.prelu = nn.PReLU()
+        self.use_gate = use_gate
     
     def make_layers(self, in_channels, out_channels, n_layers):
         layers = []
@@ -44,7 +95,8 @@ class EncoderBlock(nn.Module):
         if not self.first:
             x = self.pool(x)
         x = self.layers(x)
-        x = self.gate(x)
+        if self.use_gate:
+            x = self.gate(x)
         return self.prelu(x)
         
     
@@ -55,7 +107,9 @@ class CNN(nn.Module):
 
         self.pretrain = pretrain
         # architecture
-        self.encoder = Encoder([1, 64, 128, 192, 256], [64, 128, 192, 256, 256], [2, 2, 3, 3, 3], [None, 5, 5, 5, 5])
+        arch_args = [[1, 64, 128, 192, 256], [64, 128, 192, 256, 256], [2, 2, 3, 3, 3], [None, 5, 5, 5, 4]]
+        self.encoder = Encoder(*arch_args, use_gate=True)
+        self.decoder = Decoder(*arch_args, use_gate=True)
             
         self.fp_dim = 128
         self.num_scales = num_scales
@@ -81,6 +135,11 @@ class CNN(nn.Module):
                 nn.init.constant_(m.bias, 0)
 
     def forward(self, x):
+
+        _, _, c5 = self.encoder(x)
+        return self.decoder(c5)
+    
+    def forward_encoder(self, x):
         out = []
 
         c3, c4, c5 = self.encoder(x)
@@ -152,7 +211,6 @@ class ChannelGate(nn.Module):
 
     def forward(self, x):
         channel_att_sum = None
-        print(f"In Gate channel shape {x.shape}")
         for pool_type in self.pool_types:
             if pool_type=='avg':
                 avg_pool = F.avg_pool1d(x, x.size(2), stride=x.size(2))
@@ -173,7 +231,8 @@ class ChannelGate(nn.Module):
         return x * scale
 
 if __name__ == '__main__':
-    x0 = torch.randn((1, 1, 800))
+    x0 = torch.randn((1, 1, 3000))
+    print(f"X shape {x0.shape}")
     m0 = CNN(pretrain=True, init_weights=False, num_scales=1)
     forw = m0.forward(x0)
-    print(forw)
+    print(forw.shape)
