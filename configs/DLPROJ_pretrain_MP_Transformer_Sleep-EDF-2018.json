@@ -1,10 +1,10 @@
 {
-    "_comment": "Pretraining Encoder backbone using MaskedPrediction. Run train_mp.py script with this config",
+    "_comment": "Pretraining Encoder backbone using MaskedPrediction. Run train_mp.py script with this config. Projection Head is not used with MP training that's why its omitted",
 
     "dataset": {
-        "name": "Physio2018",
-        "eeg_channel": "C3-A2",
-        "num_splits": 5,
+        "name": "Sleep-EDF-2018",
+        "eeg_channel": "Fpz-Cz",
+        "num_splits": 10,
         "seq_len": 1,
         "target_idx": 0,
         "root_dir": "./"
@@ -17,25 +17,19 @@
         "time_window": 5,
         "time_step": 0.5,
         "encoder_embed_dim": 256,
-        "encoder_heads": 6,
-        "encoder_depths": 8,
+        "encoder_heads": 8,
+        "encoder_depths": 6,
         "decoder_embed_dim": 128,
         "decoder_heads": 4,
         "decoder_depths": 8,
         "projection_hidden": [1024, 512],
         "use_sig_backbone": true,
         "input_size": 500
-},
-
-
-    "proj_head": {
-        "name": "MLP",
-        "dim": 128
     },
 
     "training_params": {
-        "_comment": "All default sleepyco settings despite 'mode'. 'pretrain-mp' is passed to dataloader to use the base EEG epochs, not two-view as in 'pretrain'",
-        "mode": "pretrain-mp",
+        "_comment": "All default sleepyco settings despite 'mode'. 'pretrain_mp' is passed to dataloader to use the base EEG epochs, not two-view as in 'pretrain'",
+        "mode": "pretrain_mp",
         "loss": "reconstruction_loss_maeeg",
         "max_epochs": 500,
         "batch_size": 1024,
