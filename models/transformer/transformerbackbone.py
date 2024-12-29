@@ -2,13 +2,15 @@
 import torch
 import numpy as np
 import torch.nn as nn
-from typing import List
 from models.transformer.signal_backbone import SignalBackBone
 from models.transformer.transformer import AutoEncoderViT
 from models.base_model import BaseModel
 
 # TODO: there is no masking implemented yet!!!
 
+"""
+Transformer backbone Model : @zefan please describe where structure taken from
+"""
 class TransformerBackbone(BaseModel):
 
     SUPPORTED_MODES = ['pretrain_mp', 'pretrain']  # support Contrastive Learning and Masked Prediction
@@ -47,7 +49,7 @@ class TransformerBackbone(BaseModel):
         self.projectors_bn = nn.BatchNorm1d(projection_hidden[-1], affine=False)
         self.norm_pix_loss = False
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: torch.Tensor):
         """
         Gets a single eeg epoch or batched as input. Performs a forward pass. Supports different modes:
         1. if mode == pretrain_mp: use masked autoencoder and return reconstructed sequence/or reconstr latent
@@ -59,13 +61,13 @@ class TransformerBackbone(BaseModel):
             x = self.frame_backbone(x)
 
         if self.mode == 'pretrain_mp':
-            latent, pred = self.autoencoder(x)
-            return pred
+            latent, pred = self.autoencoder(x) # TODO: shape?
+            return [pred]
         else:
             # includes mode == pretrain and all other
             latent = self.autoencoder.forward_encoder(x)
-            latent_o = latent[:, :1, :].squeeze()
-            return latent_o
+            latent_o = latent[:, :1, :].squeeze() # TODO: shape?
+            return [latent_o]
 
     def make_frame(self, x):
         size = self.fs * self.second
@@ -98,14 +100,25 @@ def frame_size(fs, second, time_window, time_step):
 
 if __name__ == '__main__':
     mode = 'pretrain_mp'
-    x0 = torch.randn((50, 3000))
-    m0 = TransformerBackbone(mode, fs=100, second=30, time_window=5, time_step=0.5,
-                             encoder_embed_dim=256, encoder_depths=6, encoder_heads=8,
-                             decoder_embed_dim=128, decoder_heads=4, decoder_depths=8,
-                             projection_hidden=[1024, 512], use_sig_backbone=True)
-    m1 = TransformerBackbone(mode, fs=100, second=30, time_window=5, time_step=0.5,
-                             encoder_embed_dim=256, encoder_depths=6, encoder_heads=8,
-                             decoder_embed_dim=128, decoder_heads=4, decoder_depths=8,
-                             projection_hidden=[1024, 512], use_sig_backbone=False)
+    conf = {
+        "name": "Transformer",
+        "fs": 100,
+        "second": 30,
+        "time_window": 5,
+        "time_step": 0.5,
+        "encoder_embed_dim": 256,
+        "encoder_heads": 8,
+        "encoder_depths": 6,
+        "decoder_embed_dim": 128,
+        "decoder_heads": 4,
+        "decoder_depths": 8,
+        "projection_hidden": [1024, 512],
+        "use_sig_backbone": False,
+        "input_size": 500
+    }
+    x0 = torch.randn((50, 3000)) # Transformer needs input in this form without middle dim ex (50, 1, 3000) but this is the case for CNN!!
+    m1 = TransformerBackbone(mode, conf)
     pred = m1.forward(x0)
-    print(f"Pred-shape: {pred.shape}")
+    print(f"Pred: {type(pred)}, len={len(pred)}")
+    print(f"Pred-shape: {pred[0].shape}") # with sig backbone: (50, 51, 1472), without (50, 51, 500)
+    # TODO: weird outputshape! -> 51 is probably num of frames/patches made from the 30s epoch! 500 is 5s-window in 10ms parts

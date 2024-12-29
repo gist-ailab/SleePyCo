@@ -1,16 +1,21 @@
 import os
 import sys
-import math
 import time
 import torch
 import random
 import numpy as np
 import sklearn.metrics as skmet
+import shutil
 from terminaltables import SingleTable
 from termcolor import colored
 
 
-_, term_width = os.popen('stty size', 'r').read().split()
+def get_terminal_size():
+    size = shutil.get_terminal_size()
+    return size.lines, size.columns
+
+
+_, term_width = get_terminal_size()
 term_width = int(term_width)
 
 TOTAL_BAR_LENGTH = 25.

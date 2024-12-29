@@ -9,7 +9,7 @@ class EEGDataLoader(Dataset):
     Dataloader to load single channel EEG signals. It can operate in different training modi:
         1. pretrain: from one eeg epoch, generate two views using augmentations
         2. others: ('scratch', 'fullyfinetune', 'freezefinetune') - only load single channel EEG signals, no two views
-        3. pretrain-mp: use this one for semantic clearness when doing pretraining with masked prediction. Here we only use single channel EEG signals as in "other" TODO: potentially adding masking here
+        3. pretrain_mp: use this one for semantic clearness when doing pretraining with masked prediction. Here we only use single channel EEG signals as in "other" TODO: potentially adding masking here
     """
 
     def __init__(self, config, fold, set='train'):
@@ -29,7 +29,7 @@ class EEGDataLoader(Dataset):
         self.target_idx = self.dset_cfg['target_idx']
         
         self.training_mode = config['training_params']['mode']
-        assert self.training_mode in ['pretrain', 'pretrain-mp', 'scratch', 'fullyfinetune', 'freezefinetune']
+        assert self.training_mode in ['pretrain', 'pretrain_mp', 'scratch', 'fullyfinetune', 'freezefinetune']
 
         self.dataset_path = os.path.join(self.root_dir, 'dset', self.dset_name, 'npz')
         self.inputs, self.labels, self.epochs = self.split_dataset()
@@ -62,7 +62,7 @@ class EEGDataLoader(Dataset):
                 input_a = torch.from_numpy(input_a).float()
                 input_b = torch.from_numpy(input_b).float()
                 inputs = [input_a, input_b]
-            elif self.training_mode in ['scratch', 'fullyfinetune', 'freezefinetune']:
+            elif self.training_mode in ['scratch', 'fullyfinetune', 'freezefinetune', 'pretrain_mp']:
                 inputs = inputs.reshape(1, n_sample)
                 inputs = torch.from_numpy(inputs).float()
             else:

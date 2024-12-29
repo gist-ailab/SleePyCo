@@ -3,7 +3,7 @@ This file contains training logic for the Masked Prediction Paradigm. Aims to al
 Usage:
     - Create a config that specifies dataset, model and loss function
     - dataset: make sure to use the correct training mode so dataloader and model behave correctly
-        - ex. pretrain-mp lets dataloader only load single eeg epochs not two-views augmented!
+        - ex. pretrain_mp lets dataloader only load single eeg epochs not two-views augmented!
     - loss: specify a correct loss function. Add a supported loss name as 'loss' to train config
         - you can additionally also add loss-params a dict of named arguments you pass to your loss
 """
@@ -19,7 +19,6 @@ from models.main_model_mp import MainModelMaskedPrediction
 from utils import *
 from loss import *
 from loader import EEGDataLoader
-from models.main_model_crl import MainModel
 
 
 class OneFoldTrainer:
@@ -31,7 +30,7 @@ class OneFoldTrainer:
         self.tp_cfg = config['training_params']
         self.es_cfg = self.tp_cfg['early_stopping']
 
-        # assert that the correct training mode is set: 'pretrain-mp'. THis makes sure the models and dataset show correct behavior
+        # assert that the correct training mode is set: 'pretrain_mp'. THis makes sure the models and dataset show correct behavior
         assert self.tp_cfg['mode'] and self.tp_cfg['mode'] == 'pretrain_mp'
         # assert a loss is given in the current training config and the loss exists
         assert self.tp_cfg.get('loss', False)
@@ -79,20 +78,23 @@ class OneFoldTrainer:
         """
         We modify this method from train_crl.py to be able to deal with only raw single eeg epochs and not the two-view
         augmented approach.
-
-        TODO: check data-loading in action!
         """
         self.model.train()
         train_loss = 0
 
         for i, (inputs, labels) in enumerate(self.loader_dict['train']):
+            # input-shape:(B, 1, 3000), labels.shape: (B,)
             loss = 0
-            labels = labels.view(-1).to(self.device)
+            labels = labels.view(-1).to(self.device) # TODO: No effect here
+            #inputs = inputs.squeeze().to(self.device) # squeeze middle dimension
+            inputs = inputs.to(self.device) # TODO: CNN needs middle dim ex. (B, 1, 3000), but transformer dont! is this intentional? + what is this middle dim?
 
-            outputs = self.model(inputs)[0]  # outputs here are expected to be reconstruction prediction
+            # outputs here are expected to be reconstruction prediction. output is list of one element in pretrain_mp mode
+            outputs = self.model(inputs)[0]
 
+            # outputs shape: (B, 51, 1472)
             loss += self.criterion(inputs, outputs, labels)
-            
+
             self.optimizer.zero_grad()
             loss.backward()
             self.optimizer.step()
@@ -116,8 +118,9 @@ class OneFoldTrainer:
         eval_loss = 0
 
         for i, (inputs, labels) in enumerate(self.loader_dict[mode]):
+            # inputs-shape: (B, 1, 3000), labels shape: (B,)
             loss = 0
-            inputs = inputs.to(self.device)
+            inputs = inputs.squeeze().to(self.device)
             labels = labels.view(-1).to(self.device)
             
             outputs = self.model(inputs)[0]

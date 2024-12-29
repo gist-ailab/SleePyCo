@@ -1,21 +1,13 @@
 import torch.nn as nn
-import torch.nn.functional as F
 
 from models.transformer.transformerbackbone import TransformerBackbone
 
-from .classifiers import get_classifier
+from models.classifiers import get_classifier
+from models.cnn.cnn_backbone import CnnBackbone
 
-
-last_chn_dict = {
-    'SleePyCo': 256,
-    'XSleepNet': 256,
-    'IITNet': 128,
-    'UTime': 256,
-    'DeepSleepNet': 128,
-    'TinySleepNet': 128
-}
 
 #  TODO: Invent new mode for latent space benchmarks via output of latent representation?
+# TODO: do we need this class ? -> merge with other main_model or keep it to have separate for old repo functionality
 class MainModelMaskedPrediction(nn.Module):
     """
     This is the Main Model for working with Backbone Encoders trained via Masked Prediction Tasks.
@@ -38,27 +30,25 @@ class MainModelMaskedPrediction(nn.Module):
         self.training_mode = config['training_params']['mode']
 
         if self.bb_cfg['name'] == 'Transformer':
-            self.model = TransformerBackbone(self.mode, self.bb_cfg)
+            self.model = TransformerBackbone(self.training_mode, self.bb_cfg)
         elif self.bb_cfg['name'] == 'CnnOnly':
-            self.model = None
+            self.model = CnnBackbone(self.training_mode, self.bb_cfg)
         else:
             raise NotImplementedError('backbone not supported: {}'.format(config['backbone']['name']))
         # make sure operating mode is supported by model
+        assert self.training_mode == "pretrain_mp"
         assert self.model.is_mode_supported(self.training_mode)
         print('[INFO] Number of params of backbone: ',
               sum(p.numel() for p in self.model.parameters() if p.requires_grad))
 
-        if self.bb_cfg['dropout']:
+        if "dropout" in self.bb_cfg.keys() and self.bb_cfg["dropout"]:
             self.dropout = nn.Dropout(p=0.5)
-
 
         if self.training_mode in ['scratch', 'fullfinetune', 'freezefinetune']:
             # allowed other modi attach a classifier on only the encoder to perform benchmarks, train classifier or finetune
             self.classifier = get_classifier(config)
             print('[INFO] Number of params of classifier: ', sum(p.numel() for p in self.classifier.parameters() if p.requires_grad))
-            
-        else:
-            raise NotImplementedError('Train Mode not supported: {}'.format(config['training_params']['mode']))
+
 
     def get_max_len(self, features):
         len_list = []
@@ -68,11 +58,10 @@ class MainModelMaskedPrediction(nn.Module):
         return max(len_list)
 
     def forward(self, x):
-        outputs = []
-        output = self.model(x)  # depending on what mode is used, it can be latent or reconstruction
+        output = self.model(x)  # depending on what mode is used, it can be latent or reconstruction or feature pyramid
 
-        if self.training_mode in ['scratch', 'fullfinetune', 'freezefinetune']:
+        if self.training_mode in ['scratch', 'fullfinetune', 'freezefinetune']: # TODO: does this main model need this or do we need this main model at all?
             # latent output gets used to classify
-            outputs = self.classifier(output)
+            output = self.classifier(output)
 
-        return outputs
+        return output

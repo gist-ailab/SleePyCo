@@ -1,11 +1,11 @@
 # -*- coding:utf-8 -*-
 import torch
-import numpy as np
 import torch.nn as nn
-from typing import List
 from timm.models.vision_transformer import Block
-from .transformer_util import get_2d_sincos_pos_embed_flexible
+from models.transformer.transformer_util import get_2d_sincos_pos_embed_flexible
 from functools import partial
+
+
 
 class AutoEncoderViT(nn.Module):
     def __init__(self, input_size: int, num_patches: int,
