@@ -9,7 +9,7 @@ from models.base_model import BaseModel
 # TODO: there is no masking implemented yet!!!
 
 """
-Transformer backbone Model : @zefan please describe where structure taken from
+Transformer backbone Model : Model taken from https://github.com/dlcjfgmlnasa/NeuroNet/tree/main
 """
 class TransformerBackbone(BaseModel):
 
@@ -49,13 +49,15 @@ class TransformerBackbone(BaseModel):
         self.projectors_bn = nn.BatchNorm1d(projection_hidden[-1], affine=False)
         self.norm_pix_loss = False
 
-    def forward(self, x: torch.Tensor):
+    def forward(self, x: torch.Tensor, squeeze: bool = True):
         """
         Gets a single eeg epoch or batched as input. Performs a forward pass. Supports different modes:
         1. if mode == pretrain_mp: use masked autoencoder and return reconstructed sequence/or reconstr latent
         2. if mode == pretrain: in contrastive learning, only use normal autoencoder without masking and return latent (so it can be used in train_crl.py)
         3. all other: assume we want classification - only return latent (so classifier can be used on top)
         """
+        if squeeze:
+            x = torch.squeeze(x, 1)
         x = self.make_frame(x)
         if self.use_sig_backbone:
             x = self.frame_backbone(x)
