@@ -66,15 +66,13 @@ class TransformerBackbone(BaseModel):
         if mode == 'pretrain_mp':
         # Masked Prediction
             _, pred1, mask1 = self.autoencoder.forward_mask(x, self.mask_ratio)
-            _, pred2, mask2 = self.autoencoder.forward_mask(x, self.mask_ratio)
             recon_loss1 = self.forward_mae_loss(x, pred1, mask1)
-            recon_loss2 = self.forward_mae_loss(x, pred2, mask2)
-            return recon_loss1 + recon_loss2
+            return recon_loss1
 
         elif mode == 'pretrain':
         # Contrastive Learning
-            latent1, pred1, mask1 = self.autoencoder.forward_mask(x, self.mask_ratio)
-            latent2, pred2, mask2 = self.autoencoder.forward_mask(x, self.mask_ratio)
+            latent1, pred1 = self.autoencoder.forward(x)
+            latent2, pred2 = self.autoencoder.forward(x)
             o1, o2 = latent1[:, :1, :].squeeze(), latent2[:, :1, :].squeeze()
             o1, o2 = self.projectors(o1), self.projectors(o2)
             contrastive_loss, (labels, logits) = self.contrastive_loss(o1, o2)
