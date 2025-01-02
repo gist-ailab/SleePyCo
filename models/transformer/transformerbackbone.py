@@ -24,11 +24,12 @@ class TransformerBackbone(BaseModel):
         self.mask_ratio = conf["mask_ratio"]
 
         self.num_patches, _ = frame_size(fs=self.fs, second=self.second, time_window=self.time_window,
-                                         time_step=self.time_step)
+                                        time_step=self.time_step)
         self.frame_backbone = SignalBackBone(fs=self.fs, window=self.time_window)
         self.input_size = self.frame_backbone.feature_num
         if not self.use_sig_backbone:
             self.input_size = conf["input_size"]
+            self.num_patches = conf["num_patches"]
         self.autoencoder = AutoEncoderViT(input_size=self.input_size,
                                           encoder_embed_dim=conf["encoder_embed_dim"], num_patches=self.num_patches,
                                           encoder_heads=conf["encoder_heads"], encoder_depths=conf["encoder_depths"],
@@ -59,8 +60,8 @@ class TransformerBackbone(BaseModel):
         """
         if squeeze:
             x = torch.squeeze(x, 1)
-        x = self.make_frame(x)
         if self.use_sig_backbone:
+            x = self.make_frame(x)
             x = self.frame_backbone(x)
 
         if mode == 'pretrain_mp':
@@ -151,7 +152,8 @@ if __name__ == '__main__':
         "decoder_depths": 8,
         "projection_hidden": [1024, 512],
         "use_sig_backbone": False,
-        "input_size": 500,
+        "input_size": 3000, # if use_sig_backbone: False, needs to be same as length of signal
+        "num_patches": 50, # if use_sig_backbone: False, needs to be same as batch_size of signal
         "mask_ratio": 0.75
     }
     x0 = torch.randn((50, 3000)) # Transformer needs input in this form without middle dim ex (50, 1, 3000) but this is the case for CNN!!
