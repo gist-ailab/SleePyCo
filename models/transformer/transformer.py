@@ -35,6 +35,7 @@ class AutoEncoderViT(nn.Module):
 
         # MAE Decoder
         self.decoder_embed = nn.Linear(encoder_embed_dim, decoder_embed_dim, bias=True)
+        self.mask_token = nn.Parameter(torch.zeros(1, 1, decoder_embed_dim))
         self.decoder_pos_embed = nn.Parameter(torch.randn(1, self.num_patches, decoder_embed_dim), requires_grad=False)
         self.decoder_block = nn.ModuleList([
             Block(decoder_embed_dim, decoder_heads, self.mlp_ratio, qkv_bias=True,
@@ -100,7 +101,7 @@ class AutoEncoderViT(nn.Module):
         x = x + self.pos_embed[:, 1:, :]
 
         # masking: length -> length * mask_ratio
-        x, mask, ids_restore = self.random_masking(x, mask_ratio)
+        _, x, mask, ids_restore = self.random_masking(x, mask_ratio)
 
         # append cls token
         cls_token = self.cls_token + self.pos_embed[:, :1, :]
@@ -172,6 +173,7 @@ class AutoEncoderViT(nn.Module):
 
         # timm's trunc_normal_(std=.02) is effectively normal_(std=0.02) as cutoff is too big (2.)
         torch.nn.init.normal_(self.cls_token, std=.02)
+        torch.nn.init.normal_(self.mask_token, std=.02)
 
         # initialize nn.Linear and nn.LayerNorm
         self.apply(self._init_weights)
