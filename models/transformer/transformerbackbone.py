@@ -15,12 +15,13 @@ class TransformerBackbone(BaseModel):
 
     SUPPORTED_MODES = ['pretrain_mp', 'pretrain']  # support Contrastive Learning and Masked Prediction
 
-    def __init__(self, mode: str, conf: dict):
+    def __init__(self, mode: list, conf: dict):
         super().__init__(mode) # check if mode supported and set self.mode
         self.fs, self.second = conf["fs"], conf["second"]
         self.time_window = conf["time_window"]
         self.time_step = conf["time_step"]
         self.use_sig_backbone = conf["use_sig_backbone"]
+        self.mask_ratio = conf["mask_ratio"]
 
         self.num_patches, _ = frame_size(fs=self.fs, second=self.second, time_window=self.time_window,
                                          time_step=self.time_step)
@@ -62,14 +63,48 @@ class TransformerBackbone(BaseModel):
         if self.use_sig_backbone:
             x = self.frame_backbone(x)
 
-        if self.mode == 'pretrain_mp':
-            latent, pred = self.autoencoder(x) # TODO: shape?
-            return [pred]
+        if mode == 'pretrain_mp':
+        # Masked Prediction
+            _, pred1, mask1 = self.autoencoder.forward_mask(x, self.mask_ratio)
+            recon_loss1 = self.forward_mae_loss(x, pred1, mask1)
+            return recon_loss1
+
+        elif mode == 'pretrain':
+        # Contrastive Learning
+            latent1, pred1 = self.autoencoder.forward(x)
+            latent2, pred2 = self.autoencoder.forward(x)
+            o1, o2 = latent1[:, :1, :].squeeze(), latent2[:, :1, :].squeeze()
+            o1, o2 = self.projectors(o1), self.projectors(o2)
+            contrastive_loss, (labels, logits) = self.contrastive_loss(o1, o2)
+
+            return contrastive_loss, (labels, logits)
+
         else:
-            # includes mode == pretrain and all other
-            latent = self.autoencoder.forward_encoder(x)
-            latent_o = latent[:, :1, :].squeeze() # TODO: shape?
-            return [latent_o]
+            raise NotImplementedError()
+
+    def contrastive_loss(self, o1: torch.Tensor, o2: torch.Tensor):
+
+        # TODO
+        raise NotImplementedError()
+        
+        return 
+    
+    def forward_mae_loss(self,
+                         real: torch.Tensor,
+                         pred: torch.Tensor,
+                         mask: torch.Tensor):
+
+        # TODO
+        raise NotImplementedError()
+        if self.norm_pix_loss:
+            mean = real.mean(dim=-1, keepdim=True)
+            var = real.var(dim=-1, keepdim=True)
+            real = (real - mean) / (var + 1.e-6) ** .5
+
+        loss = (pred - real) ** 2
+        loss = loss.mean(dim=-1)
+        loss = (loss * mask).sum() / mask.sum()
+        return loss
 
     def make_frame(self, x):
         size = self.fs * self.second
@@ -116,7 +151,8 @@ if __name__ == '__main__':
         "decoder_depths": 8,
         "projection_hidden": [1024, 512],
         "use_sig_backbone": False,
-        "input_size": 500
+        "input_size": 500,
+        "mask_ratio": 0.75
     }
     x0 = torch.randn((50, 3000)) # Transformer needs input in this form without middle dim ex (50, 1, 3000) but this is the case for CNN!!
     m1 = TransformerBackbone(mode, conf)
