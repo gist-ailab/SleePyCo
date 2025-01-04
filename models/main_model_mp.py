@@ -50,18 +50,18 @@ class MainModelMaskedPrediction(nn.Module):
             print('[INFO] Number of params of classifier: ', sum(p.numel() for p in self.classifier.parameters() if p.requires_grad))
 
 
-    def get_max_len(self, features):
-        len_list = []
-        for feature in features:
-            len_list.append(feature.shape[1])
-        
-        return max(len_list)
-
     def forward(self, x):
+        """
+        Directly forwards the output of the model (outputs or loss). Loss in case where model is calculating loss internally
+        and we are in training mode. Output in all other cases.
+        """
         output = self.model(x)  # depending on what mode is used, it can be latent or reconstruction or feature pyramid
 
         if self.training_mode in ['scratch', 'fullfinetune', 'freezefinetune']: # TODO: does this main model need this or do we need this main model at all?
             # latent output gets used to classify
             output = self.classifier(output)
 
+        # wrap output in list if not already done in model itself
+        if not type(output) is list:
+            output = [output]
         return output
