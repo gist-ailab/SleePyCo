@@ -150,6 +150,7 @@ class OneFoldTrainer:
             # perform validation every X iterations
             if self.train_iter % self.tp_cfg['val_period'] == 0:
                 print('')
+                print(f'[INFO] Starting evaluation...')
                 val_loss = self.evaluate(mode='val')
                 self.early_stopping(None, val_loss, self.model)
                 self.model.train()
@@ -168,15 +169,17 @@ class OneFoldTrainer:
         eval_loss = 0
 
         for i, (inputs, labels) in enumerate(self.loader_dict[mode]):
-            # inputs-shape: (B, 1, 3000), labels shape: (B,)
+            # input-shape:(B, 1, 3000), labels.shape: (B,) -> dummy dim is removed in models that don't need it.
+
             loss = 0
-            labels = labels.view(-1).to(self.device)
+            labels = labels.view(-1).to(self.device)  # No effect in our case!
 
             # if dset level masking is activated unpack values accordingly, currently only supported if no internal loss is calculated
             # if we want ot change that we need to change this script here!
+            mask = None
             if self.dset_masking_activated:
                 assert not self.backbone_ref.is_using_internal_loss()
-                masked_input = inputs["masked_inputs"]
+                masked_input = inputs["masked_inputs"].to(self.device)
                 mask = inputs["mask"]
                 inputs = inputs["inputs"]
 
@@ -186,13 +189,13 @@ class OneFoldTrainer:
                 # Model is not using internal loss
                 if self.dset_masking_activated:
                     outputs = self.model(masked_input)[0]
-                    outputs = outputs * mask  # only focus on masked regions for loss (set all other values to 0)
-                    inputs = masked_input
+                    # outputs = outputs * mask  # only focus on masked regions for loss (set all other values to 0)
+                    # inputs = masked_input
                 else:
                     outputs = self.model(inputs)[0]
 
-                # outputs shape: (B, 51, 1472)
-                loss += self.criterion(inputs, outputs, labels)
+                # calculate loss based on predictions, gt and whether a mask is given or not
+                loss += self.criterion(inputs, outputs, reduction='mean', mask=mask, labels=labels)
             else:
                 # Model is using internal loss, so output will be loss (needed inc ase of latent masked pred or framewise loss in transformer for example)
                 loss += self.model(inputs)[0]
@@ -200,13 +203,11 @@ class OneFoldTrainer:
             eval_loss += loss.item()
 
             progress_bar(i, len(self.loader_dict[mode]),
-                         'Lr: %.4e | Loss: %.3f' % (get_lr(self.optimizer), eval_loss / (i + 1)))
+                         'Lr: %.4e | Loss: %.4f' % (get_lr(self.optimizer), eval_loss / (i + 1)))
 
         avg_eval_loss = eval_loss / len(self.loader_dict[mode])
         print(f"[INFO] {mode.capitalize()} Eval-Loss: {avg_eval_loss:.4f}")
         self.writer.add_scalar(f"{mode.capitalize()}/loss-avg", avg_eval_loss, self.train_iter)
-
-
         return eval_loss
 
     def run(self):
