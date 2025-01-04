@@ -25,9 +25,7 @@ class SupConLoss(nn.Module):
         Returns:
             A loss scalar.
         """
-        device = (torch.device('cuda')
-                  if features.is_cuda
-                  else torch.device('cpu'))
+        device = features.device
 
         if len(features.shape) < 3:
             raise ValueError('`features` needs to be [bsz, n_views, ...],'
@@ -95,26 +93,86 @@ class SupConLoss(nn.Module):
 class ReconstructionLoss(nn.Module):
     """
     Basic reconstruction loss as in MAEEG (https://arxiv.org/pdf/2211.02625).
+    Masking needs to be done before! (take out valid values before)
     """
     def __init__(self):
         super(ReconstructionLoss, self).__init__()
 
-    def forward(self, inputs: torch.Tensor, outputs: torch.Tensor, labels: torch.Tensor = None) -> torch.Tensor:
+    def forward(self, inputs: torch.Tensor, outputs: torch.Tensor, reduction:str='mean', mask=None, labels: torch.Tensor = None) -> torch.Tensor:
         """
         Goal: take single channel EEG epoch and the reconstructed output (after a Masked AutoEncoder for ex.) and calculate
         a normalized reconstruction loss.
+
+        If shape is has more then 2 dimensions. We assume 1st dim is batch dim and the rest dim will be merged
 
         inputs: raw EEG epoch from dataset which was input to model
         outputs: reconstructed EEG epoch from model
         labels: ground truth epoch from dataset but these are not needed for this loss
         """
-        # TODO: check format of data
-        cos_sim = F.cosine_similarity(inputs, outputs, dim=1) # TODO: dimension check!
-        return 1 - cos_sim
+        assert inputs.shape == outputs.shape
+        if mask is not None:
+            assert mask.shape == inputs.shape
 
+        #if inputs.ndim > 2:
+        #    batch_size = inputs.shape[0]
+        #    inputs = inputs.reshape(batch_size, -1)
+        #    outputs = outputs.reshape(batch_size, -1)
+        #    if mask is not None:
+        #        mask = mask.reshape(batch_size, -1)
+
+        # apply mask to set values equal where masked, so they don't contribute to similarity
+        if mask is not None:
+            inputs = inputs * mask
+            outputs = outputs * mask
+
+        # treat non batch dim as vector to calculate similarity form and then calc mean over batch dim to get number
+        batched_cos_sim = F.cosine_similarity(inputs, outputs, dim=-1)
+        if reduction == 'mean':
+            return 1 - batched_cos_sim.mean()
+        elif reduction == 'none':
+            return torch.ones_like(batched_cos_sim) - batched_cos_sim
+        else:
+            raise ValueError('Unknown reduction: {}'.format(reduction))
+
+
+class L2Loss(nn.Module):
+    """
+    Wrapper for basic L2 loss. Masking needs to be done before!
+    """
+    def __init__(self):
+        super(L2Loss, self).__init__()
+
+    def forward(self, inputs: torch.Tensor, outputs: torch.Tensor, reduction: str='mean', mask = None, labels: torch.Tensor = None) -> torch.Tensor:
+        """
+        If shape is has more then 2 dimensions. We assume 1st dim is batch dim and the rest dim will be merged
+
+        inputs: raw EEG epoch from dataset which was input to model
+        outputs: reconstructed EEG epoch from model
+        labels: ground truth epoch from dataset but these are not needed for this loss
+        """
+        assert inputs.shape == outputs.shape
+        if mask is not None:
+            assert inputs.shape == mask.shape
+
+        #if inputs.ndim > 2:
+        #    batch_size = inputs.shape[0]
+        #    inputs = inputs.reshape(batch_size, -1)
+        #    outputs = outputs.reshape(batch_size, -1)
+        # treat non batch dim as vector to calculate similarity form and then calc mean over batch dim to get number
+        square_dist = (outputs - inputs).pow(2)
+        if reduction == 'mean':
+            if mask is not None:
+                return (square_dist * mask).sum() / mask.sum()
+            else:
+                return torch.mean(square_dist)
+        elif reduction == 'none':
+            return square_dist
+        else:
+            raise ValueError('Unknown reduction method: {}'.format(reduction))
 
 LOSS_MAP = {
     "supcon_sleepyco": SupConLoss,
     "reconstruction_loss_maeeg": ReconstructionLoss,
+    "l2": L2Loss,
 }
 SUPPORTED_LOSS_FUNCTIONS = list(LOSS_MAP.keys())

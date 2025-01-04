@@ -18,6 +18,8 @@ Returns:
 class CnnBackbone(BaseModel):
 
     SUPPORTED_MODES = ['pretrain_mp', 'pretrain']  # support Contrastive Learning and Masked Prediction
+    INTERNAL_LOSS_CALCULATION = False
+    INTERNAL_MASKING = False
 
     def __init__(self, mode: str, conf: dict):
         super(CnnBackbone, self).__init__(mode)
@@ -99,7 +101,7 @@ class Decoder(nn.Module):
         c2 = self.layer1(c3)
         c1 = self.init_layer(c2)
 
-        print(f"Decoder with shapes {c5.shape}, {c4.shape}, {c3.shape}, {c2.shape}, {c1.shape}")
+        #print(f"Decoder with shapes {c5.shape}, {c4.shape}, {c3.shape}, {c2.shape}, {c1.shape}")
 
         return c1
 
@@ -156,7 +158,8 @@ class Encoder(nn.Module):
         c3 = self.layer2(c2)
         c4 = self.layer3(c3)
         c5 = self.layer4(c4)
-        print(f"Encoder with shapes {c1.shape}, {c2.shape}, {c3.shape}, {c4.shape}, {c5.shape}")
+
+        #print(f"Encoder with shapes {c1.shape}, {c2.shape}, {c3.shape}, {c4.shape}, {c5.shape}")
 
         return c3, c4, c5
 
@@ -268,7 +271,7 @@ class ChannelGate(nn.Module):
 
 
 if __name__ == '__main__':
-    x0 = torch.randn((10, 1, 3000)) # Todo: middle dimension seems to be num_scales?
+    x0 = torch.randn((10, 1, 3000))
     conf = {
         "name": "CnnOnly",
         "init_weights": False,
