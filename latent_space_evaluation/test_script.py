@@ -155,5 +155,102 @@ class TestLatentSpaceEvaluation(unittest.TestCase):
             for metric_name, value in metric_results.items():
                 print(f"{metric_name}: {value}")
 
+def evaluate_embeddings(embeddings, labels, output_dir="./plots"):
+    """
+    Evaluate the latent space using reducers and metrics,
+    then optionally generate plots. Reuses existing logic from tests.
+    """
+    # Initialize reducers
+    reducers = {
+        'PCA': PCAReducer(n_components=2, random_state=42),
+        't-SNE': TSNEReducer(
+            n_components=2,
+            perplexity=30.0,
+            learning_rate='auto',
+            n_iter=1000,
+            random_state=42
+        ),
+        'UMAP': UMAPReducer(
+            n_components=2,
+            n_neighbors=15,
+            min_dist=0.1,
+            metric='euclidean',
+            random_state=42
+        )
+    }
+
+    # Initialize metrics
+    metrics = [
+        SilhouetteScoreMetric(),
+        DaviesBouldinMetric(),
+        AdjustedRandIndexMetric(),
+        AdjustedMutualInfoMetric(),
+        PurityMetric(),
+        AverageEntropyMetric(),
+        TrustworthinessMetric(),
+        IntraClassCompactnessMetric(),
+        InterClassSeparationMetric(),
+        CompactnessToSeparationRatio(),
+        MutualInformationMetric(),
+        UniformityMetric(),
+        AlignmentMetric()
+    ]
+
+    results = {}
+    kmeans_labels = {}
+
+    for name, reducer in reducers.items():
+        # Fit and transform embeddings
+        reduced_embeddings = reducer.fit_transform(embeddings)
+
+        # Perform K-Means clustering once
+        predicted_labels = BaseMetric.cluster_data(reduced_embeddings, 10)
+        kmeans_labels[name] = predicted_labels
+
+        # Initialize dictionary for this reducer's metrics
+        results[name] = {}
+
+        for metric in metrics:
+            if isinstance(metric, TrustworthinessMetric) or isinstance(metric, AlignmentMetric):
+                metric_value = metric.compute(
+                    embeddings_2d=reduced_embeddings,
+                    labels=labels,
+                    n_clusters=10,
+                    original_embeddings=embeddings
+                )
+            else:
+                metric_value = metric.compute(
+                    embeddings_2d=reduced_embeddings,
+                    labels=labels,
+                    n_clusters=10,
+                    predicted_labels=kmeans_labels[name]
+                )
+            results[name][metric.__class__.__name__] = metric_value
+
+    # Print all metric results
+    for reducer_name, metric_results in results.items():
+        print(f"\nMetrics for {reducer_name}:")
+        for metric_name, value in metric_results.items():
+            print(f"{metric_name}: {value}")
+
+    # Optionally generate plots
+    plotter = EmbeddingPlotter(
+        output_dir=output_dir,
+        palette="tab10",
+        fraction=1.0,
+        figsize=(10, 8),
+        point_size=50,
+        alpha=0.7,
+        random_state=42
+    )
+
+    for name, reduced_embeddings in zip(reducers.keys(), [reducer.fit_transform(embeddings) for reducer in reducers.values()]):
+        plotter.plot(
+            embeddings=reduced_embeddings,
+            labels=labels,
+            title=f"{name} Reduction of Embeddings",
+            file_name=f"{name.lower()}_plot.png"
+        )
+
 if __name__ == '__main__':
     unittest.main()

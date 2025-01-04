@@ -108,12 +108,25 @@ class OneFoldTrainer:
 
         return eval_loss
     
+    # def generate_test_embeddings(self):
+    #     # Pseudocode:
+    #     # 1) self.model.eval()
+    #     # 2) Load your test dataset (similar to build_dataloader but for test set).
+    #     # 3) Loop over test data, collect the embeddings from the model, and store in arrays.
+    #     # 4) Return embeddings, labels
+    #     pass
+
     def run(self):
         for epoch in range(self.tp_cfg['max_epochs']):
             print('\n[INFO] Fold: {}, Epoch: {}'.format(self.fold, epoch))
             self.train_one_epoch()
             if self.early_stopping.early_stop:
                 break
+
+        # print('[INFO] Training completed. Generating test embeddings.')
+        # test_embeddings, test_labels = self.generate_test_embeddings()
+        # from latent_space_evaluation.test_script import evaluate_embeddings
+        # evaluate_embeddings(test_embeddings, test_labels)
 
 def main():
     warnings.filterwarnings("ignore", category=DeprecationWarning) 
