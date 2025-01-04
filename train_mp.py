@@ -189,8 +189,6 @@ class OneFoldTrainer:
                 # Model is not using internal loss
                 if self.dset_masking_activated:
                     outputs = self.model(masked_input)[0]
-                    # outputs = outputs * mask  # only focus on masked regions for loss (set all other values to 0)
-                    # inputs = masked_input
                 else:
                     outputs = self.model(inputs)[0]
 
@@ -240,9 +238,12 @@ def main():
         config = json.load(config_file)
     config['name'] = os.path.basename(args.config).replace('.json', '')
 
-    for fold in range(1, config['dataset']['num_splits'] + 1):
-        trainer = OneFoldTrainer(args, fold, config)
-        trainer.run()
+    # for our use-case we only need one split (no cross validation needed)
+    trainer = OneFoldTrainer(args, 1, config)
+    trainer.run()
+    #for fold in range(1, config['dataset']['num_splits'] + 1):
+    #    trainer = OneFoldTrainer(args, fold, config)
+    #    trainer.run()
 
 
 if __name__ == "__main__":
