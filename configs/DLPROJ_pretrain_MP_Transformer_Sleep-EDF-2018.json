@@ -7,10 +7,14 @@
         "num_splits": 10,
         "seq_len": 1,
         "target_idx": 0,
-        "root_dir": "./"
+        "root_dir": "./",
+        "masking": false
     },
 
     "backbone": {
+        "_comment": "This model uses internal masking on the latent frames and not full signal restoration, also using internal loss calculation. Thats why mask params and loss params need to be defined here",
+        "mask_ratio": 0.75,
+        "loss": "reconstruction_loss_maeeg",
         "name": "Transformer",
         "fs": 100,
         "second": 30,
@@ -30,7 +34,6 @@
     "training_params": {
         "_comment": "All default sleepyco settings despite 'mode'. 'pretrain_mp' is passed to dataloader to use the base EEG epochs, not two-view as in 'pretrain'",
         "mode": "pretrain_mp",
-        "loss": "reconstruction_loss_maeeg",
         "max_epochs": 500,
         "batch_size": 1024,
         "lr": 0.0005,
