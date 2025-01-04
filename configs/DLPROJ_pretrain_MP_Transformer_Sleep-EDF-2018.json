@@ -42,7 +42,8 @@
         "val_period": 649,
         "early_stopping": {
             "mode": "min",
-            "patience": 20
+            "patience": 4,
+            "_comment": "as validation is done at half an epoch, we max wait 4 validations(=2epochs)"
         }
     }
 }

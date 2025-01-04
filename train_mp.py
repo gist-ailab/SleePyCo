@@ -127,8 +127,6 @@ class OneFoldTrainer:
                 # Model is not using internal loss
                 if self.dset_masking_activated:
                     outputs = self.model(masked_input)[0]
-                    #outputs = outputs * mask  # only focus on masked regions for loss (set all other values to 0)
-                    #inputs = masked_input
                 else:
                     outputs = self.model(inputs)[0]
 
@@ -147,7 +145,7 @@ class OneFoldTrainer:
             self.train_iter += 1
 
             progress_bar(i, len(self.loader_dict['train']),
-                         'Lr: %.4e | Loss: %.3f' % (get_lr(self.optimizer), train_loss / (i + 1)))
+                         'Lr: %.4e | Loss: %.6f' % (get_lr(self.optimizer), train_loss / (i + 1)))
 
             # perform validation every X iterations
             if self.train_iter % self.tp_cfg['val_period'] == 0:
@@ -157,12 +155,13 @@ class OneFoldTrainer:
                 self.early_stopping(None, val_loss, self.model)
                 self.model.train()
                 if self.early_stopping.early_stop:
+                    print("[INFO] Early stopping...")
                     break
 
         # Log average training loss of an epoch to TensorBoard
         avg_train_loss = train_loss / len(self.loader_dict['train'])
         self.writer.add_scalar("train/epoch-avg-loss", avg_train_loss, epoch)
-        print(f"\n[INFO] Epoch {epoch}, Epochal Avg - Training Loss: {avg_train_loss:.4f}")
+        print(f"\n[INFO] Epoch {epoch}, Epochal Avg - Training Loss: {avg_train_loss:.6f}")
 
 
     @torch.no_grad()
