@@ -15,6 +15,7 @@ import warnings
 
 import torch.optim as optim
 from torch.utils.data import DataLoader
+from torch.utils.tensorboard import SummaryWriter
 
 from models.main_model_mp import MainModelMaskedPrediction
 from utils import *
@@ -44,8 +45,8 @@ class OneFoldTrainer:
         self.loader_dict = self.build_dataloader()
         self.backbone_ref = self.model.module.model
 
-        # assert a loss is given in the current training config and the loss exists
-
+        # create tensorboard writer
+        self.writer = SummaryWriter(log_dir=os.path.join("logs", config['name'], f"fold-{fold}"))
 
         # load selected loss with its parameters (if these parameters are given) - only used if model has no internal loss calculation
         if not self.backbone_ref.is_using_internal_loss():  # access backbone
@@ -95,7 +96,7 @@ class OneFoldTrainer:
 
         return {'train': train_loader, 'val': val_loader}
 
-    def train_one_epoch(self):
+    def train_one_epoch(self, epoch):
         """
         We modify this method from train_crl.py to be able to deal with only raw single eeg epochs and not the two-view
         augmented approach.
@@ -139,19 +140,28 @@ class OneFoldTrainer:
             loss.backward()
             self.optimizer.step()
 
+            self.writer.add_scalar("train/loss", loss.item(), self.train_iter)
             train_loss += loss.item()
             self.train_iter += 1
 
             progress_bar(i, len(self.loader_dict['train']),
                          'Lr: %.4e | Loss: %.3f' % (get_lr(self.optimizer), train_loss / (i + 1)))
 
+            # perform validation every X iterations
             if self.train_iter % self.tp_cfg['val_period'] == 0:
                 print('')
+                print(f'[INFO] Starting evaluation...')
                 val_loss = self.evaluate(mode='val')
                 self.early_stopping(None, val_loss, self.model)
                 self.model.train()
                 if self.early_stopping.early_stop:
                     break
+
+        # Log average training loss of an epoch to TensorBoard
+        avg_train_loss = train_loss / len(self.loader_dict['train'])
+        self.writer.add_scalar("train/epoch-avg-loss", avg_train_loss, epoch)
+        print(f"\n[INFO] Epoch {epoch}, Epochal Avg - Training Loss: {avg_train_loss:.4f}")
+
 
     @torch.no_grad()
     def evaluate(self, mode):
@@ -159,15 +169,17 @@ class OneFoldTrainer:
         eval_loss = 0
 
         for i, (inputs, labels) in enumerate(self.loader_dict[mode]):
-            # inputs-shape: (B, 1, 3000), labels shape: (B,)
+            # input-shape:(B, 1, 3000), labels.shape: (B,) -> dummy dim is removed in models that don't need it.
+
             loss = 0
-            labels = labels.view(-1).to(self.device)
+            labels = labels.view(-1).to(self.device)  # No effect in our case!
 
             # if dset level masking is activated unpack values accordingly, currently only supported if no internal loss is calculated
             # if we want ot change that we need to change this script here!
+            mask = None
             if self.dset_masking_activated:
                 assert not self.backbone_ref.is_using_internal_loss()
-                masked_input = inputs["masked_inputs"]
+                masked_input = inputs["masked_inputs"].to(self.device)
                 mask = inputs["mask"]
                 inputs = inputs["inputs"]
 
@@ -177,13 +189,13 @@ class OneFoldTrainer:
                 # Model is not using internal loss
                 if self.dset_masking_activated:
                     outputs = self.model(masked_input)[0]
-                    outputs = outputs * mask  # only focus on masked regions for loss (set all other values to 0)
-                    inputs = masked_input
+                    # outputs = outputs * mask  # only focus on masked regions for loss (set all other values to 0)
+                    # inputs = masked_input
                 else:
                     outputs = self.model(inputs)[0]
 
-                # outputs shape: (B, 51, 1472)
-                loss += self.criterion(inputs, outputs, labels)
+                # calculate loss based on predictions, gt and whether a mask is given or not
+                loss += self.criterion(inputs, outputs, reduction='mean', mask=mask, labels=labels)
             else:
                 # Model is using internal loss, so output will be loss (needed inc ase of latent masked pred or framewise loss in transformer for example)
                 loss += self.model(inputs)[0]
@@ -191,16 +203,21 @@ class OneFoldTrainer:
             eval_loss += loss.item()
 
             progress_bar(i, len(self.loader_dict[mode]),
-                         'Lr: %.4e | Loss: %.3f' % (get_lr(self.optimizer), eval_loss / (i + 1)))
+                         'Lr: %.4e | Loss: %.4f' % (get_lr(self.optimizer), eval_loss / (i + 1)))
 
+        avg_eval_loss = eval_loss / len(self.loader_dict[mode])
+        print(f"[INFO] {mode.capitalize()} Eval-Loss: {avg_eval_loss:.4f}")
+        self.writer.add_scalar(f"{mode.capitalize()}/loss-avg", avg_eval_loss, self.train_iter)
         return eval_loss
 
     def run(self):
         for epoch in range(self.tp_cfg['max_epochs']):
             print('\n[INFO] Fold: {}, Epoch: {}'.format(self.fold, epoch))
-            self.train_one_epoch()
+            self.train_one_epoch(epoch)
             if self.early_stopping.early_stop:
                 break
+        # close tensorboard-writer
+        self.writer.close()
 
 
 def main():
