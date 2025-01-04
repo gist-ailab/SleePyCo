@@ -137,3 +137,7 @@ datasets/
 *.zip
 *.pdf
 results/
+
+# Mac and IntelliJ
+.idea/
+.DS_Store
