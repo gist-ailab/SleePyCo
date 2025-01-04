@@ -1,19 +1,25 @@
 import os
 import glob
-import torch
-import numpy as np
+
+from data_utils import SUPPORTED_MASKING, MASKING_MAP
 from transform import *
 from torch.utils.data import Dataset
 
 
 class EEGDataLoader(Dataset):
+    """
+    Dataloader to load single channel EEG signals. It can operate in different training modi:
+        1. pretrain: from one eeg epoch, generate two views using augmentations
+        2. others: ('scratch', 'fullyfinetune', 'freezefinetune') - only load single channel EEG signals, no two views
+        3. pretrain_mp: use this one for semantic clearness when doing pretraining with masked prediction. Here we only use single channel EEG signals as in "other" TODO: potentially adding masking here
+    """
 
     def __init__(self, config, fold, set='train'):
 
-        self.set = set
-        self.fold = fold
+        self.set = set  # train or val
+        self.fold = fold  # idx of fold from cross-validation (influences how split)
 
-        self.sr = 100        
+        self.sampling_rate = 100 # how many values sampled per second from EEG recording
         self.dset_cfg = config['dataset']
         
         self.root_dir = self.dset_cfg['root_dir']
@@ -25,10 +31,23 @@ class EEGDataLoader(Dataset):
         self.target_idx = self.dset_cfg['target_idx']
         
         self.training_mode = config['training_params']['mode']
+        assert self.training_mode in ['pretrain', 'pretrain_mp', 'scratch', 'fullyfinetune', 'freezefinetune']
 
         self.dataset_path = os.path.join(self.root_dir, 'dset', self.dset_name, 'npz')
         self.inputs, self.labels, self.epochs = self.split_dataset()
-        
+
+        # Setup masking if activated
+        self.masking_activated = "masking" in self.dset_cfg.keys() and self.dset_cfg["masking"]
+        if self.masking_activated:
+            # check for set masking mode and store respective method
+            assert "masking_type" in self.dset_cfg.keys()
+            self.masking_type = self.dset_cfg["masking_type"]
+            assert self.masking_type in SUPPORTED_MASKING
+            self.masking_method = MASKING_MAP[self.masking_type]
+            assert "masking_ratio" in self.dset_cfg.keys()
+            self.masking_ratio = self.dset_cfg["masking_ratio"]
+
+        # Setup two-transform in case of contrastive learning
         if self.training_mode == 'pretrain':
             self.transform = Compose(
                 transforms=[
@@ -46,7 +65,7 @@ class EEGDataLoader(Dataset):
         return len(self.epochs)
 
     def __getitem__(self, idx):
-        n_sample = 30 * self.sr * self.seq_len
+        n_sample = 30 * self.sampling_rate * self.seq_len
         file_idx, idx, seq_len = self.epochs[idx]
         inputs = self.inputs[file_idx][idx:idx+seq_len]
 
@@ -57,7 +76,7 @@ class EEGDataLoader(Dataset):
                 input_a = torch.from_numpy(input_a).float()
                 input_b = torch.from_numpy(input_b).float()
                 inputs = [input_a, input_b]
-            elif self.training_mode in ['scratch', 'fullyfinetune', 'freezefinetune']:
+            elif self.training_mode in ['scratch', 'fullyfinetune', 'freezefinetune', 'pretrain_mp']:
                 inputs = inputs.reshape(1, n_sample)
                 inputs = torch.from_numpy(inputs).float()
             else:
@@ -70,7 +89,11 @@ class EEGDataLoader(Dataset):
         labels = self.labels[file_idx][idx:idx+seq_len]
         labels = torch.from_numpy(labels).long()
         labels = labels[self.target_idx]
-        
+
+        if self.masking_activated: # TODO: shape check nad compatibility with pretrain crl scheme!, maybe separate method
+            inputs, masked_inputs, mask = self.masking_method(inputs, self.masking_ratio)
+            return {'inputs': inputs, 'masked_inputs': masked_inputs, 'mask': mask}, labels
+
         return inputs, labels
 
     def split_dataset(self):

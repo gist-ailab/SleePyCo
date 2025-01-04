@@ -1,11 +1,11 @@
 # -*- coding:utf-8 -*-
 import torch
-import numpy as np
 import torch.nn as nn
-from typing import List
 from timm.models.vision_transformer import Block
-from .transformer_util import get_2d_sincos_pos_embed_flexible
+from models.transformer.transformer_util import get_2d_sincos_pos_embed_flexible
 from functools import partial
+
+
 
 class AutoEncoderViT(nn.Module):
     def __init__(self, input_size: int, num_patches: int,
@@ -35,6 +35,7 @@ class AutoEncoderViT(nn.Module):
 
         # MAE Decoder
         self.decoder_embed = nn.Linear(encoder_embed_dim, decoder_embed_dim, bias=True)
+        self.mask_token = nn.Parameter(torch.zeros(1, 1, decoder_embed_dim))
         self.decoder_pos_embed = nn.Parameter(torch.randn(1, self.num_patches, decoder_embed_dim), requires_grad=False)
         self.decoder_block = nn.ModuleList([
             Block(decoder_embed_dim, decoder_heads, self.mlp_ratio, qkv_bias=True,
@@ -50,6 +51,11 @@ class AutoEncoderViT(nn.Module):
         latent = self.forward_encoder(x)
         pred = self.forward_decoder(latent)
         return latent, pred
+    
+    def forward_mask(self, x, mask_ratio):
+        latent, mask, ids_restore = self.forward_mask_encoder(x, mask_ratio)
+        pred = self.forward_mask_decoder(latent, ids_restore)
+        return latent, pred, mask
 
     def forward_encoder(self, x: torch.Tensor):
         # embed patches
@@ -86,6 +92,72 @@ class AutoEncoderViT(nn.Module):
         # predictor projection
         x = self.decoder_pred(x)
         return x
+    
+    def forward_mask_encoder(self, x: torch.Tensor, mask_ratio: float = 0.5):
+        # embed patches
+        x = self.patch_embed(x)
+
+        # add pos embed w/o cls token
+        x = x + self.pos_embed[:, 1:, :]
+
+        # masking: length -> length * mask_ratio
+        _, x, mask, ids_restore = self.random_masking(x, mask_ratio)
+
+        # append cls token
+        cls_token = self.cls_token + self.pos_embed[:, :1, :]
+        cls_tokens = cls_token.expand(x.shape[0], -1, -1)
+        x = torch.cat((cls_tokens, x), dim=1)
+
+        # apply Transformer blocks
+        for block in self.encoder_block:
+            x = block(x)
+
+        x = self.encoder_norm(x)
+        return x, mask, ids_restore
+
+    def forward_mask_decoder(self, x, ids_restore: torch.Tensor):
+        # embed tokens
+        x = self.decoder_embed(x[:, 1:, :])
+
+        # append mask tokens to sequence
+        mask_tokens = self.mask_token.repeat(x.shape[0], ids_restore.shape[1] - x.shape[1], 1)
+        x_ = torch.cat([x, mask_tokens], dim=1)  # no cls token
+        x = torch.gather(x_, dim=1, index=ids_restore.unsqueeze(-1).repeat(1, 1, x.shape[2]))  # unshuffle
+
+        # add pos embed
+        x = x + self.decoder_pos_embed
+
+        # apply Transformer blocks
+        for block in self.decoder_block:
+            x = block(x)
+
+        x = self.decoder_norm(x)
+
+        # predictor projection
+        x = self.decoder_pred(x)
+        return x
+
+    @staticmethod
+    def random_masking(x, mask_ratio):
+        n, l, d = x.shape  # batch, length, dim
+        len_keep = int(l * (1 - mask_ratio))
+
+        noise = torch.rand(n, l, device=x.device)  # noise in [0, 1]
+
+        # sort noise for each sample
+        ids_shuffle = torch.argsort(noise, dim=1)  # ascend: small is keep, large is remove
+        ids_restore = torch.argsort(ids_shuffle, dim=1)
+
+        # keep the first subset
+        ids_keep = ids_shuffle[:, :len_keep]
+        x_masked = torch.gather(x, dim=1, index=ids_keep.unsqueeze(-1).repeat(1, 1, d))
+
+        # generate the binary mask: 0 is keep, 1 is remove
+        mask = torch.ones([n, l], device=x.device)
+        mask[:, :len_keep] = 0
+
+        mask = torch.gather(mask, dim=1, index=ids_restore)
+        return x, x_masked, mask, ids_restore
 
     def initialize_weights(self):
         # initialization
@@ -101,6 +173,7 @@ class AutoEncoderViT(nn.Module):
 
         # timm's trunc_normal_(std=.02) is effectively normal_(std=0.02) as cutoff is too big (2.)
         torch.nn.init.normal_(self.cls_token, std=.02)
+        torch.nn.init.normal_(self.mask_token, std=.02)
 
         # initialize nn.Linear and nn.LayerNorm
         self.apply(self._init_weights)

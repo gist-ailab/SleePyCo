@@ -10,7 +10,7 @@ from torch.utils.data import DataLoader
 
 from utils import *
 from loader import EEGDataLoader
-from models.main_model import MainModel
+from models.main_model_crl import MainModel
 
 
 class OneFoldTrainer:
