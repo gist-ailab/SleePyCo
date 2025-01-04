@@ -93,6 +93,8 @@ class OneFoldTrainer:
         val_dataset = EEGDataLoader(self.cfg, self.fold, set='val')
         val_loader = DataLoader(dataset=val_dataset, **dataloader_args)
         print('[INFO] Dataloader prepared')
+        print('[INFO] Batch-Size: {}'.format(self.tp_cfg['batch_size']))
+        print('[INFO] Train-Batches: {}, Val-Batches: {}'.format(len(train_loader), len(val_loader)))
 
         return {'train': train_loader, 'val': val_loader}
 
