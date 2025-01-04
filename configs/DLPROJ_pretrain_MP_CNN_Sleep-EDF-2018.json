@@ -7,10 +7,14 @@
         "num_splits": 10,
         "seq_len": 1,
         "target_idx": 0,
-        "root_dir": "./"
+        "root_dir": "./",
+        "masking": true,
+        "masking_type": "fixed_proportion_random",
+        "masking_ratio": 0.75
     },
 
     "backbone": {
+        "_comment": "Does not use internal masking thus we have masking activated in the dataloader",
         "name": "CnnOnly",
         "init_weights": false,
         "num_scales": 1
@@ -21,7 +25,7 @@
         "mode": "pretrain_mp",
         "loss": "reconstruction_loss_maeeg",
         "max_epochs": 500,
-        "batch_size": 1024,
+        "batch_size": 256,
         "lr": 0.0005,
         "weight_decay": 0.0001,
         "temperature": 0.07,
