@@ -82,24 +82,27 @@ class OneFoldTrainer:
 
             progress_bar(i, len(self.loader_dict['train']), 'Lr: %.4e | Loss: %.3f' % (get_lr(self.optimizer), train_loss / (i + 1)))
 
+            if self.train_iter % self.tp_cfg['val_period'] == 0:
+                print('')
+                val_loss = self.evaluate(mode='val', epoch=epoch)
+                self.early_stopping(None, val_loss, self.model)
+                self.model.train()
+                if self.early_stopping.early_stop:
+                    return True
+                
         # Log average training loss to TensorBoard
         avg_train_loss = train_loss / len(self.loader_dict['train'])
         self.writer.add_scalar("Loss/Train", avg_train_loss, epoch)
         print(f"\n[INFO] Epoch {epoch}, Training Loss: {avg_train_loss:.4f}")
-
-        if self.train_iter % self.tp_cfg['val_period'] == 0:
-            print('')
-            val_loss = self.evaluate(mode='val', epoch=epoch)
-            self.early_stopping(None, val_loss, self.model)
-            self.model.train()
-            if self.early_stopping.early_stop:
-                return True
+        
         return False
 
     @torch.no_grad()
-    def evaluate(self, mode, epoch=None):
+    def evaluate(self, mode):
         self.model.eval()
         eval_loss = 0
+        y_true = np.zeros(0)
+        y_pred = np.zeros((0, self.cfg['classifier']['num_classes']))
 
         for i, (inputs, labels) in enumerate(self.loader_dict[mode]):
             loss = 0
@@ -107,23 +110,54 @@ class OneFoldTrainer:
             labels = labels.view(-1).to(self.device)
             
             outputs = self.model(inputs)[0]
+            outputs_sum = torch.zeros_like(outputs)
+
+            for j in range(len(outputs)):
+                loss += self.criterion(outputs[j], labels)
+                outputs_sum += outputs[j]
 
             features = outputs.unsqueeze(1).repeat(1, 2, 1)
             loss += self.criterion(features, labels)
 
             eval_loss += loss.item()
+            # Collect all labels and predictions
+            y_true = np.concatenate([y_true, labels.cpu().numpy()])
+            y_pred = np.concatenate([y_pred, outputs_sum.cpu().numpy()])
             
             progress_bar(i, len(self.loader_dict[mode]), 'Lr: %.4e | Loss: %.3f' % (get_lr(self.optimizer), eval_loss / (i + 1)))
 
         avg_eval_loss = eval_loss / len(self.loader_dict[mode])
         print(f"[INFO] {mode.capitalize()} Loss: {avg_eval_loss:.4f}")
-
-        # Log validation loss to TensorBoard
-        if epoch is not None:
-            self.writer.add_scalar(f"Loss/{mode.capitalize()}", avg_eval_loss, epoch)
+        self.writer.add_scalar(f"Loss/{mode.capitalize()}", avg_eval_loss, self.train_iter)
+        
+        # Compute additional metrics and log to TensorBoard
+        self.log_metrics_to_tensorboard(y_true, y_pred)
 
         return avg_eval_loss
-    
+
+    def log_metrics_to_tensorboard(self, y_true, y_pred):
+        result_dict = skmet.classification_report(y_true, y_pred, digits=3, output_dict=True)
+        
+        # Extract relevant metrics
+        accuracy = round(result_dict['accuracy']*100, 1)
+        macro_f1 = round(result_dict['macro avg']['f1-score']*100, 1)
+        kappa = round(skmet.cohen_kappa_score(y_true, y_pred), 3)
+        
+        # Log to TensorBoard
+        self.writer.add_scalar(f"Metrics/Accuracy", accuracy, self.train_iter)
+        self.writer.add_scalar(f"Metrics/Macro_F1", macro_f1, self.train_iter)
+        self.writer.add_scalar(f"Metrics/Cohen_Kappa", kappa, self.train_iter)
+
+        # If needed, log class-specific metrics (e.g., class 0, class 1, etc.)
+        for class_label in result_dict.keys():
+            if class_label not in ['accuracy', 'macro avg', 'weighted avg']:  # Skip non-class metrics
+                precision = round(result_dict[class_label]['precision']*100, 1)
+                recall = round(result_dict[class_label]['recall']*100, 1)
+                f1_score = round(result_dict[class_label]['f1-score']*100, 1)
+                self.writer.add_scalar(f"Metrics/Class_{class_label}/Precision", precision, self.train_iter)
+                self.writer.add_scalar(f"Metrics/Class_{class_label}/Recall", recall, self.train_iter)
+                self.writer.add_scalar(f"Metrics/Class_{class_label}/F1_Score", f1_score, self.train_iter)  
+        
     def run(self):
         for epoch in range(self.tp_cfg['max_epochs']):
             print('\n[INFO] Fold: {}, Epoch: {}'.format(self.fold, epoch))

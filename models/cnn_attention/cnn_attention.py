@@ -2,34 +2,49 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+from models.base_model import BaseModel
 
-class CNNBackboneWithAttention(nn.Module):
-    def __init__(self, pretrain, init_weights=False, num_scales=1):
-        super(CNNBackboneWithAttention, self).__init__()
+"""
+CNN structure taken from https://github.com/gist-ailab/SleePyCo
 
-        self.pretrain = pretrain
-        # architecture
-        self.init_layer = self.make_layers(in_channels=1, out_channels=64, n_layers=2, maxpool_size=None, first=True)
-        self.layer1 = self.make_layers(in_channels=64, out_channels=128, n_layers=2, maxpool_size=5)
-        self.layer2 = self.make_layers(in_channels=128, out_channels=192, n_layers=3, maxpool_size=5)
-        self.layer3 = self.make_layers(in_channels=192, out_channels=256, n_layers=3, maxpool_size=5)
-        self.layer4 = self.make_layers(in_channels=256, out_channels=256, n_layers=3, maxpool_size=5)
+Returns:
+    pretrain: flag to only return the last feature layer of the pyramid
+    init_weights: initialise weights by constant
+    num_scales: values 1-3 how many of the feature pyramid layers are returned
+    use_attention: if add attention after conv layer or not
 
-        # Self-Attention module
-        self.attention = SelfAttention(embed_dim=256, num_heads=8)
-            
+    Function forward calls the whole autoencoder structure,
+    function forwards_encoder only calls the encoder structure
+"""
+class CnnBackboneWithAttn(BaseModel):
+
+    SUPPORTED_MODES = ['pretrain_mp', 'pretrain']  # support Contrastive Learning and Masked Prediction
+    INTERNAL_LOSS_CALCULATION = False
+    INTERNAL_MASKING = False
+
+    def __init__(self, mode: str, conf: dict):
+        super(CnnBackboneWithAttn, self).__init__(mode)
+
+        # architecture setup
+        arch_args = [[1, 64, 128, 192, 256], [64, 128, 192, 256, 256], [2, 2, 3, 3, 3], [None, 5, 5, 5, 4]]
+
+        # attention layer setup, by default self-attention to last 2 layers
+        enc_attention = [False, False, False, True, True]
+        dec_attention = [False, False, False, True, True]
+        self.encoder = Encoder(*arch_args, use_gate=True, use_attention=enc_attention)
+        self.decoder = Decoder(*arch_args, use_gate=True, use_attention=dec_attention)
+
         self.fp_dim = 128
-        self.num_scales = num_scales
-        self.init_weights = init_weights
+        self.num_scales = conf["num_scales"]
         self.conv_c5 = nn.Conv1d(256, self.fp_dim, 1, 1, 0)
 
         if self.num_scales > 1:
             self.conv_c4 = nn.Conv1d(256, self.fp_dim, 1, 1, 0)
-        
+
         if self.num_scales > 2:
             self.conv_c3 = nn.Conv1d(192, self.fp_dim, 1, 1, 0)
-        
-        if self.init_weights:
+
+        if conf["init_weights"]:
             self._initialize_weights()
 
     def _initialize_weights(self):
@@ -42,37 +57,22 @@ class CNNBackboneWithAttention(nn.Module):
                 nn.init.constant_(m.weight, 1)
                 nn.init.constant_(m.bias, 0)
 
-    def make_layers(self, in_channels, out_channels, n_layers, maxpool_size, first=False):
-        layers = []
-        layers = layers + [MaxPool1d(maxpool_size)] if not first else layers
-
-        for i in range(n_layers):
-            conv1d = nn.Conv1d(in_channels, out_channels, kernel_size=3, padding=1)
-            layers += [conv1d, nn.BatchNorm1d(out_channels)]
-            if i == n_layers - 1:
-                layers += [ChannelGate(in_channels)]
-            layers += [nn.PReLU()]
-            in_channels = out_channels
-
-        return nn.Sequential(*layers)
-
     def forward(self, x):
-        out = []
+        """
+        Depending on mode acts as backbone only, outputting latent space or also has decoder outputting reconstructed image.
+        1. if mode == pretrain_mp: return reconstructed sequence/or reconstructed latent (used in train_mp.py)
+        2. if mode == pretrain: in contrastive learning, only use normal encoder without masking. Return latent (used in train_crl.py)
+        3. all other: assume we want classification - only return latent (so classifier can be used on top) -> here we return feature pyramid
+        """
+        c3, c4, c5 = self.encoder(x)
 
-        c1 = self.init_layer(x)
-        c2 = self.layer1(c1)
-        c3 = self.layer2(c2)
-        c4 = self.layer3(c3)
-        c5 = self.layer4(c4)
-
-        # Apply self-attention to the last CNN layer's output
-        c5 = c5.permute(0, 2, 1)  # Convert to (batch, seq_len, channels)
-        c5 = self.attention(c5)
-        c5 = c5.permute(0, 2, 1)  # Convert back to (batch, channels, seq_len)
-
-        if self.pretrain:
-            out.append(c5)
+        if self.mode == 'pretrain_mp':
+            return [self.decoder(c5)]
+        elif self.mode == 'pretrain':
+            return [c5]
         else:
+            # here we return feature pyramid for future use (ex. classification)
+            out = []
             p5 = self.conv_c5(c5)
             out.append(p5)
             if self.num_scales > 1:
@@ -81,9 +81,134 @@ class CNNBackboneWithAttention(nn.Module):
             if self.num_scales > 2:
                 p3 = self.conv_c3(c3)
                 out.append(p3)
+            return out
 
-        return out
 
+
+class Decoder(nn.Module):
+    def __init__(self, in_channels: list, out_channels: list, n_layers: list, maxpool_size: list, use_gate: bool, use_attention=[False, False, False, False, False]):
+        super(Decoder, self).__init__()
+        self.init_layer = DecoderBlock(in_channels=in_channels[0], out_channels=out_channels[0], n_layers=n_layers[0],
+                                       maxpool_size=maxpool_size[0], use_gate=use_gate, first=True, use_attention=use_attention[0])
+        self.layer1 = DecoderBlock(in_channels=in_channels[1], out_channels=out_channels[1], n_layers=n_layers[1],
+                                   maxpool_size=maxpool_size[1], use_gate=use_gate, use_attention=use_attention[1])
+        self.layer2 = DecoderBlock(in_channels=in_channels[2], out_channels=out_channels[2], n_layers=n_layers[2],
+                                   maxpool_size=maxpool_size[2], use_gate=use_gate, use_attention=use_attention[2])
+        self.layer3 = DecoderBlock(in_channels=in_channels[3], out_channels=out_channels[3], n_layers=n_layers[3],
+                                   maxpool_size=maxpool_size[3], use_gate=use_gate, use_attention=use_attention[3])
+        self.layer4 = DecoderBlock(in_channels=in_channels[4], out_channels=out_channels[4], n_layers=n_layers[4],
+                                   maxpool_size=maxpool_size[4], use_gate=use_gate, use_attention=use_attention[4])
+
+    def forward(self, x: torch.Tensor):
+        c5 = self.layer4(x)
+        c4 = self.layer3(c5)
+        c3 = self.layer2(c4)
+        c2 = self.layer1(c3)
+        c1 = self.init_layer(c2)
+
+        #print(f"Decoder with shapes {c5.shape}, {c4.shape}, {c3.shape}, {c2.shape}, {c1.shape}")
+
+        return c1
+
+
+class DecoderBlock(nn.Module):
+    def __init__(self, in_channels, out_channels, n_layers, maxpool_size, use_gate, first=False, use_attention=False):
+        super(DecoderBlock, self).__init__()
+        self.use_gate = use_gate
+        self.first = first
+        self.transConv = nn.ConvTranspose1d(out_channels, out_channels, maxpool_size,
+                                            maxpool_size) if not first else None
+        self.layers = self.make_layers(in_channels, out_channels, n_layers)
+        self.prelu = nn.PReLU()
+        self.use_attention = use_attention
+        if self.use_attention:
+            self.attention = SelfAttention(embed_dim=in_channels, num_heads=8)
+
+    def make_layers(self, out_channels, in_channels, n_layers):
+        layers = []
+        for i in range(n_layers):
+            conv1d = nn.Conv1d(in_channels, out_channels, kernel_size=3, padding=1)
+            layers += [conv1d, nn.BatchNorm1d(out_channels)]
+            if i == n_layers - 1:
+                self.gate = ChannelGate(in_channels)
+            if i != n_layers - 1:
+                layers += [nn.PReLU()]
+            in_channels = out_channels
+        return nn.Sequential(*layers)
+
+    def forward(self, x: torch.Tensor):
+        if not self.first:
+            x = self.transConv(x)
+        x = self.layers(x)
+        if self.use_gate:
+            x = self.gate(x)
+
+        if self.use_attention:
+            x = x.permute(0,2,1)
+            x = self.attention(x).permute(0,2,1)
+        return self.prelu(x)
+
+
+class Encoder(nn.Module):
+    def __init__(self, in_channels: list, out_channels: list, n_layers: list, maxpool_size: list, use_gate: bool, use_attention=[False, False, False, False, False]):
+        super(Encoder, self).__init__()
+        self.init_layer = EncoderBlock(in_channels=in_channels[0], out_channels=out_channels[0], n_layers=n_layers[0],
+                                       maxpool_size=maxpool_size[0], use_gate=use_gate, first=True, use_attention=use_attention[0])
+        self.layer1 = EncoderBlock(in_channels=in_channels[1], out_channels=out_channels[1], n_layers=n_layers[1],
+                                   maxpool_size=maxpool_size[1], use_gate=use_gate, use_attention=use_attention[1])
+        self.layer2 = EncoderBlock(in_channels=in_channels[2], out_channels=out_channels[2], n_layers=n_layers[2],
+                                   maxpool_size=maxpool_size[2], use_gate=use_gate, use_attention=use_attention[2])
+        self.layer3 = EncoderBlock(in_channels=in_channels[3], out_channels=out_channels[3], n_layers=n_layers[3],
+                                   maxpool_size=maxpool_size[3], use_gate=use_gate, use_attention=use_attention[3])
+        self.layer4 = EncoderBlock(in_channels=in_channels[4], out_channels=out_channels[4], n_layers=n_layers[4],
+                                   maxpool_size=maxpool_size[4], use_gate=use_gate, use_attention=use_attention[4])
+
+    def forward(self, x: torch.Tensor):
+        c1 = self.init_layer(x)
+        c2 = self.layer1(c1)
+        c3 = self.layer2(c2)
+        c4 = self.layer3(c3)
+        c5 = self.layer4(c4)
+
+        #print(f"Encoder with shapes {c1.shape}, {c2.shape}, {c3.shape}, {c4.shape}, {c5.shape}")
+
+        return c3, c4, c5
+
+
+class EncoderBlock(nn.Module):
+    def __init__(self, in_channels, out_channels, n_layers, maxpool_size, use_gate, first=False, use_attention=False):
+        super(EncoderBlock, self).__init__()
+        self.first = first
+        self.pool = MaxPool1d(maxpool_size)
+        self.layers = self.make_layers(in_channels, out_channels, n_layers)
+        self.prelu = nn.PReLU()
+        self.use_gate = use_gate
+        self.use_attention = use_attention
+        if self.use_attention:
+            self.attention = SelfAttention(embed_dim=out_channels, num_heads=8)
+
+    def make_layers(self, in_channels, out_channels, n_layers):
+        layers = []
+        for i in range(n_layers):
+            conv1d = nn.Conv1d(in_channels, out_channels, kernel_size=3, padding=1)
+            layers += [conv1d, nn.BatchNorm1d(out_channels)]
+            if i == n_layers - 1:
+                self.gate = ChannelGate(in_channels)
+            if i != n_layers - 1:
+                layers += [nn.PReLU()]
+            in_channels = out_channels
+        return nn.Sequential(*layers)
+
+    def forward(self, x: torch.Tensor):
+        if not self.first:
+            x = self.pool(x)
+        x = self.layers(x)
+        if self.use_gate:
+            x = self.gate(x)
+        if self.use_attention:
+            x = x.permute(0,2,1)
+            x = self.attention(x).permute(0,2,1)
+        return self.prelu(x)
 
 class SelfAttention(nn.Module):
     def __init__(self, embed_dim, num_heads):
@@ -121,11 +246,13 @@ class MaxPool1d(nn.Module):
 
 
 class BasicConv(nn.Module):
-    def __init__(self, in_planes, out_planes, kernel_size, stride=1, padding=0, dilation=1, groups=1, relu=True, bn=True, bias=False):
+    def __init__(self, in_planes, out_planes, kernel_size, stride=1, padding=0, dilation=1, groups=1, relu=True,
+                 bn=True, bias=False):
         super(BasicConv, self).__init__()
         self.out_channels = out_planes
-        self.conv = nn.Conv1d(in_planes, out_planes, kernel_size=kernel_size, stride=stride, padding=padding, dilation=dilation, groups=groups, bias=bias)
-        self.bn = nn.BatchNorm1d(out_planes,eps=1e-5, momentum=0.01, affine=True) if bn else None
+        self.conv = nn.Conv1d(in_planes, out_planes, kernel_size=kernel_size, stride=stride, padding=padding,
+                              dilation=dilation, groups=groups, bias=bias)
+        self.bn = nn.BatchNorm1d(out_planes, eps=1e-5, momentum=0.01, affine=True) if bn else None
         self.relu = nn.ReLU() if relu else None
 
     def forward(self, x):
@@ -146,25 +273,21 @@ class ChannelGate(nn.Module):
             nn.Linear(gate_channels, gate_channels // reduction_ratio),
             nn.ReLU(),
             nn.Linear(gate_channels // reduction_ratio, gate_channels)
-            )
+        )
         self.pool_types = pool_types
 
     def forward(self, x):
         channel_att_sum = None
         for pool_type in self.pool_types:
-            if pool_type=='avg':
+            if pool_type == 'avg':
                 avg_pool = F.avg_pool1d(x, x.size(2), stride=x.size(2))
                 channel_att_raw = self.mlp(avg_pool)
-            elif pool_type=='max':
+            elif pool_type == 'max':
                 max_pool = F.max_pool1d(x, x.size(2), stride=x.size(2))
-                channel_att_raw = self.mlp( max_pool )
-            elif pool_type=='lp':
-                lp_pool = F.lp_pool2d( x, 2, (x.size(2), x.size(3)), stride=(x.size(2), x.size(3)))
-                channel_att_raw = self.mlp( lp_pool )
-            elif pool_type=='lse':
-                # LSE pool only
-                lse_pool = logsumexp_2d(x)
-                channel_att_raw = self.mlp( lse_pool )
+                channel_att_raw = self.mlp(max_pool)
+            elif pool_type == 'lp':
+                lp_pool = F.lp_pool2d(x, 2, (x.size(2), x.size(3)), stride=(x.size(2), x.size(3)))
+                channel_att_raw = self.mlp(lp_pool)
 
             if channel_att_sum is None:
                 channel_att_sum = channel_att_raw
@@ -175,14 +298,16 @@ class ChannelGate(nn.Module):
         return x * scale
 
 
-def logsumexp_2d(tensor):
-    tensor_flatten = tensor.view(tensor.size(0), tensor.size(1), -1)
-    s, _ = torch.max(tensor_flatten, dim=2, keepdim=True)
-    outputs = s + (tensor_flatten - s).exp().sum(dim=2, keepdim=True).log()
-    return outputs
-
 if __name__ == '__main__':
-    x0 = torch.randn((50, 3000))
-    m0 = CNNBackboneWithAttention(pretrain=True, init_weights=False, num_scales=1)
+    x0 = torch.randn((10, 1, 3000))
+    conf = {
+        "name": "CnnOnly",
+        "init_weights": False,
+        "num_scales": 1
+    }
+    mode = "pretrain_mp"
+    print(f"X shape {x0.shape}")
+    m0 = CnnBackboneWithAttn(mode, conf)
     forw = m0.forward(x0)
-    print(forw)
+    print(f"Out: {type(forw)}, len={len(forw)}")
+    print(f"Out-Shape: {forw[0].shape}")
