@@ -57,6 +57,9 @@ class BaseModel(nn.Module, abc.ABC):
         """
         pass
 
+    def switch_mode(self, mode):
+        self.mode = mode
+
     def is_mode_supported(self, mode_to_check: str) -> bool:
         return mode_to_check in self.SUPPORTED_MODES
 

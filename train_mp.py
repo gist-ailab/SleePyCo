@@ -17,7 +17,7 @@ import torch.optim as optim
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 
-from models.main_model_mp import MainModelMaskedPrediction
+from models.main_model_dlproj import MainModelDLProject
 from utils import *
 from loss import *
 from loader import EEGDataLoader
@@ -75,7 +75,7 @@ class OneFoldTrainer:
                                             ckpt_name=self.ckpt_name, mode=self.es_cfg['mode'])
 
     def build_model(self):
-        model = MainModelMaskedPrediction(self.cfg)
+        model = MainModelDLProject(self.cfg)
         print('[INFO] Number of params of model: ', sum(p.numel() for p in model.parameters() if p.requires_grad))
         model = torch.nn.DataParallel(model, device_ids=list(range(len(self.args.gpu.split(",")))))
         model.to(self.device)
