@@ -170,9 +170,29 @@ class L2Loss(nn.Module):
         else:
             raise ValueError('Unknown reduction method: {}'.format(reduction))
 
+class CrossEntropyLoss(nn.Module):
+    """
+    Wrapper for basic L2 loss. Masking needs to be done before!
+    """
+    def __init__(self):
+        super(CrossEntropyLoss, self).__init__()
+        self.ce = nn.CrossEntropyLoss()
+
+    def forward(self, inputs: torch.Tensor, outputs: torch.Tensor, reduction: str='mean', mask = None, labels: torch.Tensor = None) -> torch.Tensor:
+        """
+        Calculates classification loss
+
+        inputs: None expected
+        outputs: Predicted logits
+        labels: ground truth class labels for epochs
+        """
+        return self.ce(outputs, labels)
+
 LOSS_MAP = {
     "supcon_sleepyco": SupConLoss,
     "reconstruction_loss_maeeg": ReconstructionLoss,
     "l2": L2Loss,
+    "cross_entropy": CrossEntropyLoss,
 }
+
 SUPPORTED_LOSS_FUNCTIONS = list(LOSS_MAP.keys())
