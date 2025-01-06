@@ -8,14 +8,12 @@
         "seq_len": 1,
         "target_idx": 0,
         "root_dir": "./",
-        "masking": true,
-        "masking_type": "fixed_proportion_random",
-        "masking_ratio": 0.75
+        "masking": false
     },
 
     "backbone": {
         "_comment": "Does not use internal masking thus we have masking activated in the dataloader",
-        "name": "CnnOnly",
+        "name": "Cnn+Attention",
         "init_weights": false
     },
 
@@ -30,7 +28,7 @@
 
     "training_params": {
         "_comment": "All default sleepyco settings despite 'mode'. 'pretrain-mp' is passed to dataloader to use the base EEG epochs, not two-view as in 'pretrain'",
-        "mode": "pretrain_mp",
+        "mode": "pretrain",
         "loss": "l2",
         "max_epochs": 500,
         "batch_size": 128,

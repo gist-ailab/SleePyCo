@@ -17,6 +17,15 @@
         "init_weights": false
     },
 
+    "classifier": {
+        "_comment": "Classifier used to finetune it and benmchmark -> linear Evaluation",
+        "name": "DLProjMLP",
+        "input_dim": 128,
+        "hidden_dim": 256,
+        "dropout": 0.5,
+        "num_classes": 5
+    },
+
     "training_params": {
         "_comment": "All default sleepyco settings despite 'mode'. 'pretrain-mp' is passed to dataloader to use the base EEG epochs, not two-view as in 'pretrain'",
         "mode": "pretrain",
