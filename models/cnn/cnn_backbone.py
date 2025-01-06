@@ -15,6 +15,7 @@ Returns:
     Function forward calls the whole autoencoder structure,
     function forwards_encoder only calls the encoder structure
 """
+
 class CnnBackbone(BaseModel):
 
     SUPPORTED_MODES = ['pretrain_mp', 'pretrain']  # support Contrastive Learning and Masked Prediction
@@ -33,7 +34,6 @@ class CnnBackbone(BaseModel):
         self.decoder = Decoder(*arch_args, use_gate=True)
 
         self.fp_dim = 128
-        self.num_scales = conf["num_scales"]
 
         self.projection_head = nn.Sequential(
                 nn.AdaptiveAvgPool1d(1),

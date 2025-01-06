@@ -14,8 +14,7 @@
     "backbone": {
         "_comment": "Does not use internal masking thus we have masking activated in the dataloader",
         "name": "CnnOnly",
-        "init_weights": false,
-        "num_scales": 1
+        "init_weights": false
     },
 
     "training_params": {

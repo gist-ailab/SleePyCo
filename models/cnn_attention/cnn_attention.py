@@ -26,7 +26,10 @@ class CnnBackboneWithAttn(BaseModel):
         super(CnnBackboneWithAttn, self).__init__(mode)
 
         # architecture setup
-        arch_args = [[1, 64, 128, 192, 256], [64, 128, 192, 256, 256], [2, 2, 3, 3, 3], [None, 5, 5, 5, 4]]
+        arch_args = [[1, 64, 128, 192, 256],
+                     [64, 128, 192, 256, 128],
+                     [2, 2, 3, 3, 3],
+                     [None, 5, 5, 5, 4]]
 
         # attention layer setup, by default self-attention to last 2 layers
         enc_attention = [False, False, False, True, True]
@@ -35,14 +38,10 @@ class CnnBackboneWithAttn(BaseModel):
         self.decoder = Decoder(*arch_args, use_gate=True, use_attention=dec_attention)
 
         self.fp_dim = 128
-        self.num_scales = conf["num_scales"]
-        self.conv_c5 = nn.Conv1d(256, self.fp_dim, 1, 1, 0)
 
-        if self.num_scales > 1:
-            self.conv_c4 = nn.Conv1d(256, self.fp_dim, 1, 1, 0)
-
-        if self.num_scales > 2:
-            self.conv_c3 = nn.Conv1d(192, self.fp_dim, 1, 1, 0)
+        self.projection_head = nn.Sequential(
+            nn.AdaptiveAvgPool1d(1),
+        )
 
         if conf["init_weights"]:
             self._initialize_weights()
@@ -67,21 +66,14 @@ class CnnBackboneWithAttn(BaseModel):
         c3, c4, c5 = self.encoder(x)
 
         if self.mode == 'pretrain_mp':
-            return [self.decoder(c5)]
-        elif self.mode == 'pretrain':
-            return [c5]
+            return [self.decoder(
+                c5)]  # Note that here the mp training happens on latent dim (128,6) while for all other modes we output (128,1) latent
+            # Mean on eval benchmarks of MP train we take latent trained on (128,6) and AvgPool
         else:
-            # here we return feature pyramid for future use (ex. classification)
-            out = []
-            p5 = self.conv_c5(c5)
-            out.append(p5)
-            if self.num_scales > 1:
-                p4 = self.conv_c4(c4)
-                out.append(p4)
-            if self.num_scales > 2:
-                p3 = self.conv_c3(c3)
-                out.append(p3)
-            return out
+            # includes all other modes including 'pretrain'. Outputs normalized 128 dim latent
+            non_normalized_latent = self.projection_head(c5)
+            normalized_latent = F.normalize(non_normalized_latent, dim=1)
+            return [normalized_latent]
 
 
 
@@ -303,7 +295,6 @@ if __name__ == '__main__':
     conf = {
         "name": "CnnOnly",
         "init_weights": False,
-        "num_scales": 1
     }
     mode = "pretrain_mp"
     print(f"X shape {x0.shape}")
