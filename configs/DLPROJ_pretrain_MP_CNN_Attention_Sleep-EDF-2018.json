@@ -42,6 +42,7 @@
             "mode": "min",
             "patience": 4,
             "_comment": "as validation is done at half an epoch, we max wait 4 validations(=2epochs)"
-        }
+        },
+        "classifier_epochs": 100
     }
 }
