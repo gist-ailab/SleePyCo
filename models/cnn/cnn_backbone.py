@@ -24,23 +24,24 @@ class CnnBackbone(BaseModel):
     def __init__(self, mode: str, conf: dict):
         super(CnnBackbone, self).__init__(mode)
 
-        # architecture setup
-        arch_args = [[1, 64, 128, 192, 256], [64, 128, 192, 256, 256], [2, 2, 3, 3, 3], [None, 5, 5, 5, 4]]
+        # architecture setup (params for encoder blocks)
+        arch_args = [[1, 64, 128, 192, 256],  # in channels
+                     [64, 128, 192, 256, 128],  # out channels
+                     [2, 2, 3, 3, 3],  # n-layers
+                     [None, 5, 5, 5, 4]]  # max-pool size
         self.encoder = Encoder(*arch_args, use_gate=True)
         self.decoder = Decoder(*arch_args, use_gate=True)
 
         self.fp_dim = 128
         self.num_scales = conf["num_scales"]
-        self.conv_c5 = nn.Conv1d(256, self.fp_dim, 1, 1, 0)
 
-        if self.num_scales > 1:
-            self.conv_c4 = nn.Conv1d(256, self.fp_dim, 1, 1, 0)
-
-        if self.num_scales > 2:
-            self.conv_c3 = nn.Conv1d(192, self.fp_dim, 1, 1, 0)
+        self.projection_head = nn.Sequential(
+                nn.AdaptiveAvgPool1d(1),
+        )
 
         if conf["init_weights"]:
             self._initialize_weights()
+
 
     def _initialize_weights(self):
         for m in self.modules():
@@ -61,22 +62,13 @@ class CnnBackbone(BaseModel):
         """
         c3, c4, c5 = self.encoder(x)
         if self.mode == 'pretrain_mp':
-            return [self.decoder(c5)]
-        elif self.mode == 'pretrain':
-            return [c5] # latent shape [10, 256, 6]
+            return [self.decoder(c5)]  # Note that here the mp training happens on latent dim (128,6) while for all other modes we output (128,1) latent
+                                       # Mean on eval benchmarks of MP train we take latent trained on (128,6) and AvgPool
         else:
-            # here we return feature pyramid for future use (ex. classification)
-            out = []
-            p5 = self.conv_c5(c5)
-            out.append(p5)
-            if self.num_scales > 1:
-                p4 = self.conv_c4(c4)
-                out.append(p4)
-            if self.num_scales > 2:
-                p3 = self.conv_c3(c3)
-                out.append(p3)
-            return out
-
+            # includes all other modes including 'pretrain'. Outputs normalized 128 dim latent
+            non_normalized_latent = self.projection_head(c5)
+            normalized_latent = F.normalize(non_normalized_latent, dim=1)
+            return [normalized_latent]
 
 
 class Decoder(nn.Module):
@@ -158,7 +150,7 @@ class Encoder(nn.Module):
         c4 = self.layer3(c3)
         c5 = self.layer4(c4)
 
-        #print(f"Encoder with shapes {c1.shape}, {c2.shape}, {c3.shape}, {c4.shape}, {c5.shape}")
+        # print(f"Encoder with shapes {c1.shape}, {c2.shape}, {c3.shape}, {c4.shape}, {c5.shape}")
 
         return c3, c4, c5
 

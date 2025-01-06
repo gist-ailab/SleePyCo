@@ -97,20 +97,18 @@ class OneFoldTrainer:
             if self.train_iter % self.tp_cfg['val_period'] == 0:
                 print('')
                 print(f'[INFO] Starting evaluation...')
-                val_loss = self.evaluate(mode='val', epoch=epoch)
+                val_loss = self.evaluate(mode='val')
                 self.early_stopping(None, val_loss, self.model)
                 self.model.train()
                 if self.early_stopping.early_stop:
                     print("[INFO] Early stopping...")
                     break
-                    return True
 
         # Log average training loss to TensorBoard
         avg_train_loss = train_loss / len(self.loader_dict['train'])
         self.writer.add_scalar("Loss/Train", avg_train_loss, epoch)
         print(f"\n[INFO] Epoch {epoch}, Training Loss: {avg_train_loss:.4f}")
 
-        return False
 
     @torch.no_grad()
     def evaluate(self, mode):
@@ -176,8 +174,8 @@ class OneFoldTrainer:
     def run(self):
         for epoch in range(self.tp_cfg['max_epochs']):
             print('\n[INFO] Fold: {}, Epoch: {}'.format(self.fold, epoch))
-            early_stop = self.train_one_epoch(epoch)
-            if early_stop:
+            self.train_one_epoch(epoch)
+            if self.early_stopping.early_stop:
                 break
 
         # Close TensorBoard writer at the end
