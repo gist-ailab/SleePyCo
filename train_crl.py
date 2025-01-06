@@ -20,7 +20,11 @@ class OneFoldTrainer:
         self.cfg = config
         self.tp_cfg = config['training_params']
         self.es_cfg = self.tp_cfg['early_stopping']
-        
+
+        # assert that the correct training mode is set: 'pretrain'. This makes sure the models and dataset show correct behavior
+        if not 'mode' in self.tp_cfg.keys() and self.tp_cfg['mode'] == 'pretrain':
+            raise ValueError('Running train_crl.py, only mode pretrain is supported and must be declared in the config file')
+
         self.device = get_device(preference="cuda")
         print('[INFO] Config name: {}'.format(config['name']))
         print('[INFO] Device: {}'.format(str(self.device)))
@@ -38,7 +42,7 @@ class OneFoldTrainer:
 
         # Initialize TensorBoard writer
         self.writer = SummaryWriter(log_dir=os.path.join("logs", config['name'], f"fold-{fold}"))
-        
+
     def build_model(self):
         model = MainModel(self.cfg)
         print('[INFO] Number of params of model: ', sum(p.numel() for p in model.parameters() if p.requires_grad))
@@ -49,12 +53,19 @@ class OneFoldTrainer:
         return model
     
     def build_dataloader(self):
-        dataloader_args = {'batch_size': self.tp_cfg['batch_size'], 'shuffle': True, 'num_workers': 4*len(self.args.gpu.split(",")), 'pin_memory': True}
+        dataloader_args = {'batch_size': self.tp_cfg['batch_size'],
+                           # default data loader args, using 4 workers per GPU, also have 2 batches prefetched by default
+                           'shuffle': True,
+                           'num_workers': 4 * len(self.args.gpu.split(",")),
+                           # self.args.gpu.split defaults to 1 even when arg not given
+                           'pin_memory': True}
         train_dataset = EEGDataLoader(self.cfg, self.fold, set='train')
         train_loader = DataLoader(dataset=train_dataset, **dataloader_args)
         val_dataset = EEGDataLoader(self.cfg, self.fold, set='val')
         val_loader = DataLoader(dataset=val_dataset, **dataloader_args)
         print('[INFO] Dataloader prepared')
+        print('[INFO] Batch-Size: {}'.format(self.tp_cfg['batch_size']))
+        print('[INFO] Train-Batches: {}, Val-Batches: {}'.format(len(train_loader), len(val_loader)))
 
         return {'train': train_loader, 'val': val_loader}
 
@@ -80,21 +91,25 @@ class OneFoldTrainer:
             train_loss += loss.item()
             self.train_iter += 1
 
-            progress_bar(i, len(self.loader_dict['train']), 'Lr: %.4e | Loss: %.3f' % (get_lr(self.optimizer), train_loss / (i + 1)))
+            progress_bar(i, len(self.loader_dict['train']), 'Lr: %.4e | Loss: %.6f' % (get_lr(self.optimizer), train_loss / (i + 1)))
 
+            # perform validation every X iterations
             if self.train_iter % self.tp_cfg['val_period'] == 0:
                 print('')
+                print(f'[INFO] Starting evaluation...')
                 val_loss = self.evaluate(mode='val', epoch=epoch)
                 self.early_stopping(None, val_loss, self.model)
                 self.model.train()
                 if self.early_stopping.early_stop:
+                    print("[INFO] Early stopping...")
+                    break
                     return True
-                
+
         # Log average training loss to TensorBoard
         avg_train_loss = train_loss / len(self.loader_dict['train'])
         self.writer.add_scalar("Loss/Train", avg_train_loss, epoch)
         print(f"\n[INFO] Epoch {epoch}, Training Loss: {avg_train_loss:.4f}")
-        
+
         return False
 
     @torch.no_grad()
@@ -123,13 +138,13 @@ class OneFoldTrainer:
             # Collect all labels and predictions
             y_true = np.concatenate([y_true, labels.cpu().numpy()])
             y_pred = np.concatenate([y_pred, outputs_sum.cpu().numpy()])
-            
-            progress_bar(i, len(self.loader_dict[mode]), 'Lr: %.4e | Loss: %.3f' % (get_lr(self.optimizer), eval_loss / (i + 1)))
+
+            progress_bar(i, len(self.loader_dict[mode]), 'Lr: %.4e | Loss: %.6f' % (get_lr(self.optimizer), eval_loss / (i + 1)))
 
         avg_eval_loss = eval_loss / len(self.loader_dict[mode])
         print(f"[INFO] {mode.capitalize()} Loss: {avg_eval_loss:.4f}")
         self.writer.add_scalar(f"Loss/{mode.capitalize()}", avg_eval_loss, self.train_iter)
-        
+
         # Compute additional metrics and log to TensorBoard
         self.log_metrics_to_tensorboard(y_true, y_pred)
 
@@ -137,12 +152,12 @@ class OneFoldTrainer:
 
     def log_metrics_to_tensorboard(self, y_true, y_pred):
         result_dict = skmet.classification_report(y_true, y_pred, digits=3, output_dict=True)
-        
+
         # Extract relevant metrics
         accuracy = round(result_dict['accuracy']*100, 1)
         macro_f1 = round(result_dict['macro avg']['f1-score']*100, 1)
         kappa = round(skmet.cohen_kappa_score(y_true, y_pred), 3)
-        
+
         # Log to TensorBoard
         self.writer.add_scalar(f"Metrics/Accuracy", accuracy, self.train_iter)
         self.writer.add_scalar(f"Metrics/Macro_F1", macro_f1, self.train_iter)
@@ -156,8 +171,8 @@ class OneFoldTrainer:
                 f1_score = round(result_dict[class_label]['f1-score']*100, 1)
                 self.writer.add_scalar(f"Metrics/Class_{class_label}/Precision", precision, self.train_iter)
                 self.writer.add_scalar(f"Metrics/Class_{class_label}/Recall", recall, self.train_iter)
-                self.writer.add_scalar(f"Metrics/Class_{class_label}/F1_Score", f1_score, self.train_iter)  
-        
+                self.writer.add_scalar(f"Metrics/Class_{class_label}/F1_Score", f1_score, self.train_iter)
+
     def run(self):
         for epoch in range(self.tp_cfg['max_epochs']):
             print('\n[INFO] Fold: {}, Epoch: {}'.format(self.fold, epoch))
@@ -188,10 +203,13 @@ def main():
     with open(args.config) as config_file:
         config = json.load(config_file)
     config['name'] = os.path.basename(args.config).replace('.json', '')
-    
-    for fold in range(1, config['dataset']['num_splits'] + 1):
-        trainer = OneFoldTrainer(args, fold, config)
-        trainer.run()
+
+    # for our use-case we only need one split (no cross validation needed)
+    trainer = OneFoldTrainer(args, 1, config)
+    trainer.run()
+    # for fold in range(1, config['dataset']['num_splits'] + 1):
+    #    trainer = OneFoldTrainer(args, fold, config)
+    #    trainer.run()
 
 
 if __name__ == "__main__":

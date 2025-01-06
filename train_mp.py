@@ -34,7 +34,9 @@ class OneFoldTrainer:
         self.dset_cfg = config['dataset']
 
         # assert that the correct training mode is set: 'pretrain_mp'. This makes sure the models and dataset show correct behavior
-        assert self.tp_cfg['mode'] and self.tp_cfg['mode'] == 'pretrain_mp'
+        if not 'mode' in self.tp_cfg.keys() and self.tp_cfg['mode'] == 'pretrain_mp':
+            raise ValueError(
+                'Running train_mp.py, only mode pretrain_mp is supported and must be declared in the config file')
 
         self.device = get_device(preference="cuda")
         print('[INFO] Config name: {}'.format(config['name']))
