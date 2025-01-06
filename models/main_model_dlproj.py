@@ -45,10 +45,13 @@ class MainModelDLProject(nn.Module):
 
     def switch_mode(self, mode):
         self.training_mode = mode
-        assert self.training_mode in ["pretrain_mp", "pretrain", "train-classifier", "classification"]
+        assert self.training_mode in ["pretrain_mp", "pretrain", "train-classifier", "classification", "gen-embeddings"]
         assert self.model.is_mode_supported(self.training_mode)
         print('[INFO] Number of params of backbone: ',
               sum(p.numel() for p in self.model.parameters() if p.requires_grad))
+
+        if self.training_mode == "gen-embeddings":
+            self.freeze_backbone()
 
         if self.training_mode in ['train-classifier', 'classification']:
             # allowed other modi attach a classifier on only the encoder to perform benchmarks, train classifier or finetune
@@ -79,7 +82,7 @@ class MainModelDLProject(nn.Module):
         """
         output = self.model(x)  # depending on what mode is used, it can be latent or reconstruction or feature pyramid
 
-        if self.training_mode in ['train_classifier', 'classification']:
+        if self.training_mode in ['train-classifier', 'classification']:
             # latent output gets used to classify
             output = self.classifier(output)
 
