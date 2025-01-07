@@ -23,7 +23,6 @@ class TransformerBackbone(BaseModel):
         self.time_window = conf["time_window"]
         self.time_step = conf["time_step"]
         self.use_sig_backbone = conf["use_sig_backbone"]
-        self.mask_ratio = conf["mask_ratio"]
 
         self.num_patches, _ = frame_size(fs=self.fs, second=self.second, time_window=self.time_window,
                                         time_step=self.time_step)
@@ -40,11 +39,6 @@ class TransformerBackbone(BaseModel):
                                           decoder_embed_dim=conf["decoder_embed_dim"],
                                           decoder_heads=conf["decoder_heads"],
                                           decoder_depths=conf["decoder_depths"], use_cls=conf["use_cls"])
-
-        # setup loss function for internal loss
-        if not 'loss' in conf.keys():
-            raise ValueError("Need to define loss function for internal loss calculation (between masked latent frames and their reconstructions)")
-        self.criterion = LOSS_MAP[conf['loss']](**(conf['loss_params'] if 'loss_params' in conf.keys() else {}))
 
         # setup projection networks that project frames before passed to encoder
         projection_hidden = [conf["encoder_embed_dim"]] + conf["projection_hidden"]
@@ -75,7 +69,12 @@ class TransformerBackbone(BaseModel):
             x = self.make_frame(x)
             x = self.frame_backbone(x)
 
-        return [self.autoencoder(x)]
+        latent, pred = self.autoencoder(x)
+        
+        if self.mode == 'pretrain_mp':
+            return [pred]
+        elif self.mode == 'pretrain':
+            return [latent]
 
     def make_frame(self, x: torch.Tensor) -> torch.Tensor:
         """
