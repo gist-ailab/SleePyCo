@@ -75,59 +75,7 @@ class TransformerBackbone(BaseModel):
             x = self.make_frame(x)
             x = self.frame_backbone(x)
 
-        if self.mode == 'pretrain_mp':
-            # Masked Prediction
-            _, pred1, mask1 = self.autoencoder.forward_mask(x, self.mask_ratio)
-            recon_loss1 = self.forward_mp_loss(x, pred1, mask1)
-            return recon_loss1
-
-        elif mode == 'pretrain':
-            # Contrastive Learning
-            latent1, pred1 = self.autoencoder.forward(x)  # todo: adapt to actual dataloading in this repo!
-            latent2, pred2 = self.autoencoder.forward(x)
-            o1, o2 = latent1[:, :1, :].squeeze(), latent2[:, :1, :].squeeze()
-            o1, o2 = self.projectors(o1), self.projectors(o2)
-            contrastive_loss, (labels, logits) = self.contrastive_loss(o1, o2)
-
-            return contrastive_loss, (labels, logits)
-        else:
-            # If not in above train modes we want to return the output of the encoder so it can be used for benchmarking
-            # or classification
-            pred = self.autoencoder.forward(x)
-            return pred  # TODO: check shape is real embedding and not frames
-
-
-    def contrastive_loss(self, o1: torch.Tensor, o2: torch.Tensor):
-
-        # TODO
-        raise NotImplementedError()
-        
-        return 
-
-
-    def forward_mp_loss(self,
-                        real: torch.Tensor,
-                        pred: torch.Tensor,
-                        mask: torch.Tensor) -> float:
-        """
-        Computes the masked prediction loss between original frames after frame backbone and the ones after
-        masked autoencoder (Transformer)
-        params:
-            real: original image/latent data before masking
-            pred: predicted reconstruction of image/latent after masking
-            mask: binary mask, telling where mask was applied
-        """
-        if self.norm_pix_loss:
-            mean = real.mean(dim=-1, keepdim=True)
-            var = real.var(dim=-1, keepdim=True)
-            real = (real - mean) / (var + 1.e-6) ** .5
-
-        loss = self.criterion(pred, real, reduction='none')
-        if loss.ndim > mask.ndim: # if loss is not already compressing (like cos similarity) we need to calc mean over token this is for ex used in l2 loss
-            loss = loss.mean(dim=-1)
-        loss = (loss * mask).sum() / mask.sum()
-        return loss
-
+        return [self.autoencoder(x)]
 
     def make_frame(self, x: torch.Tensor) -> torch.Tensor:
         """
