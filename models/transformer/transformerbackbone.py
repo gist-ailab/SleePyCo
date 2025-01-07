@@ -39,7 +39,7 @@ class TransformerBackbone(BaseModel):
                                           encoder_heads=conf["encoder_heads"], encoder_depths=conf["encoder_depths"],
                                           decoder_embed_dim=conf["decoder_embed_dim"],
                                           decoder_heads=conf["decoder_heads"],
-                                          decoder_depths=conf["decoder_depths"])
+                                          decoder_depths=conf["decoder_depths"], use_cls=conf["use_cls"])
 
         # setup loss function for internal loss
         if not 'loss' in conf.keys():
@@ -185,7 +185,7 @@ if __name__ == '__main__':
         "use_sig_backbone": False,
         "input_size": 3000, # if use_sig_backbone: False, needs to be same as length of signal
         "num_patches": 50, # if use_sig_backbone: False, needs to be same as batch_size of signal
-        "mask_ratio": 0.75
+        "use_cls": True # flag to use cls_token
     }
     x0 = torch.randn((50, 3000)) # Transformer needs input in this form without middle dim ex (50, 1, 3000) but this is the case for CNN!!
     m1 = TransformerBackbone(mode, conf)
