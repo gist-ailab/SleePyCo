@@ -72,9 +72,9 @@ class TransformerBackbone(BaseModel):
         latent, pred = self.autoencoder(x)
         
         if self.mode == 'pretrain_mp':
-            return [pred]
+            return [pred.transpose(0, 1)] # output is (1, 50, 3000), so transpose to get dummy dim in middle
         elif self.mode == 'pretrain':
-            return [latent]
+            return [latent[:, :1, :].squeeze()]
 
     def make_frame(self, x: torch.Tensor) -> torch.Tensor:
         """
@@ -138,5 +138,5 @@ if __name__ == '__main__':
     m1 = TransformerBackbone(mode, conf)
     pred = m1.forward(x0)
     print(f"Pred: {type(pred)}, len={len(pred)}")
-    print(f"Pred-shape: {pred[0].shape}") # with sig backbone: (50, 51, 1472), without (50, 51, 500)
+    print(f"Pred-shape: {pred[0].shape}") # with sig backbone: (50, 51, 1472), without (1, 50, 3000)
     # Regarding shape:  51 is probably num of frames/patches made from the 30s epoch! 500 is 5s-window in 10ms parts

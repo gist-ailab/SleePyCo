@@ -50,6 +50,7 @@ class AutoEncoderViT(nn.Module):
     def forward(self, x):
         latent = self.forward_encoder(x)
         pred = self.forward_decoder(latent)
+        print(f"latent shape {latent.shape}")
         return latent, pred
 
     def forward_encoder(self, x: torch.Tensor):
