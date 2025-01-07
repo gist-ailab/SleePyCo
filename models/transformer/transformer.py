@@ -50,11 +50,11 @@ class AutoEncoderViT(nn.Module):
     def forward(self, x):
         latent = self.forward_encoder(x)
         pred = self.forward_decoder(latent)
-        print(f"latent shape {latent.shape}")
         return latent, pred
 
     def forward_encoder(self, x: torch.Tensor):
         # embed patches
+        #print(f"x shape {x.shape}")
         x = self.patch_embed(x)
 
         # add pos embed w/o cls token
@@ -66,6 +66,7 @@ class AutoEncoderViT(nn.Module):
             cls_tokens = cls_token.expand(x.shape[0], -1, -1)
             x = torch.cat((cls_tokens, x), dim=1)
 
+        #print(f"x shape {x.shape}")
         # apply Transformer blocks
         for block in self.encoder_block:
             x = block(x)

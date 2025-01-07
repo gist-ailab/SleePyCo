@@ -60,11 +60,10 @@ class CnnBackbone(BaseModel):
         3. all other: assume we want classification - only return latent (so classifier can be used on top) -> here we return feature pyramid
         """
         c3, c4, c5 = self.encoder(x)
-
         if self.mode == 'pretrain_mp':
             return [self.decoder(c5)]
         elif self.mode == 'pretrain':
-            return [c5]
+            return [c5] # latent shape [10, 256, 6]
         else:
             # here we return feature pyramid for future use (ex. classification)
             out = []

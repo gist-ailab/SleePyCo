@@ -54,27 +54,26 @@ class TransformerBackbone(BaseModel):
         self.projectors_bn = nn.BatchNorm1d(projection_hidden[-1], affine=False)
         self.norm_pix_loss = False
 
-    def forward(self, x: torch.Tensor, squeeze: bool = True):
+    def forward(self, x: torch.Tensor):
         """
         Gets a single eeg epoch or batched as input. Performs a forward pass. Supports different modes:
         1. if mode == pretrain_mp: use masked autoencoder and return reconstructed sequence/or reconstr latent
         2. if mode == pretrain: in contrastive learning, only use normal autoencoder without masking and return latent (so it can be used in train_crl.py)
         3. all other: assume we want classification - only return latent (so classifier can be used on top)
         """
-        if squeeze:
-            # in current dataloader, dummy dimension is in data ex (B, 1, 3000), We remove this dimension for this transformer model to work.
-            x = torch.squeeze(x, 1)
 
+        # in current dataloader, dummy dimension is in data ex (B, 1, 3000), We remove this dimension for this transformer model to work.
         if self.use_sig_backbone:
+            x = torch.squeeze(x, 1)
             x = self.make_frame(x)
             x = self.frame_backbone(x)
 
         latent, pred = self.autoencoder(x)
-        
+        print(f"latent shape {latent.shape}")
         if self.mode == 'pretrain_mp':
-            return [pred.transpose(0, 1)] # output is (1, 50, 3000), so transpose to get dummy dim in middle
+            return [pred] # pred output is (1, 50, 3000)
         elif self.mode == 'pretrain':
-            return [latent[:, :1, :].squeeze()]
+            return [latent[:, :1, :].squeeze()] # output is (1, 51, 3000) so remove cls token and dummy dim 
 
     def make_frame(self, x: torch.Tensor) -> torch.Tensor:
         """
@@ -131,10 +130,10 @@ if __name__ == '__main__':
         "projection_hidden": [1024, 512],
         "use_sig_backbone": False,
         "input_size": 3000, # if use_sig_backbone: False, needs to be same as length of signal
-        "num_patches": 50, # if use_sig_backbone: False, needs to be same as batch_size of signal
+        "num_patches": 1, # if use_sig_backbone: False, needs to be 1
         "use_cls": True # flag to use cls_token
     }
-    x0 = torch.randn((50, 3000)) # Transformer needs input in this form without middle dim ex (50, 1, 3000) but this is the case for CNN!!
+    x0 = torch.randn((50, 1, 3000)) # Transformer needs input in this form without middle dim ex (50, 1, 3000) but this is the case for CNN!!
     m1 = TransformerBackbone(mode, conf)
     pred = m1.forward(x0)
     print(f"Pred: {type(pred)}, len={len(pred)}")
