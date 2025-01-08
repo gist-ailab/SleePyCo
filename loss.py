@@ -183,11 +183,84 @@ class CrossEntropyLoss(nn.Module):
         """
         return self.ce(outputs, labels)
 
+
+class NTXentLoss(nn.Module):
+    """NT-Xent Loss for unsupervised contrastive learning (SimCLR).
+
+    This implementation expects:
+    features: [batch_size, 2, embedding_dim]
+    i.e., exactly two augmented views per sample.
+
+    No labels are required. If provided, they will be ignored or raise an error.
+    """
+
+    def __init__(self, temperature=0.5):
+        super(NTXentLoss, self).__init__()
+        self.temperature = temperature
+        self.ce = nn.CrossEntropyLoss()
+
+    def forward(self, inputs: torch.Tensor, outputs: torch.Tensor, reduction: str='mean', mask = None, labels: torch.Tensor = None):
+        """
+        features: [B, n_views, ...], typically n_views=2
+        labels: not required for NT-Xent (will raise error if provided)
+
+        Returns:
+            A scalar loss value.
+        """
+        device = outputs.device
+        if labels is not None:
+            raise ValueError("NTXentLoss does not use labels; got labels as input.")
+
+        if len(outputs.shape) < 3:
+            raise ValueError('`features` must be [bsz, n_views, feature_dim] at least.')
+        if len(outputs.shape) > 3:
+            outputs = outputs.view(outputs.shape[0], outputs.shape[1], -1)
+
+        bsz, n_views, dim = outputs.shape
+        if n_views != 2:
+            raise ValueError("NT-Xent loss requires exactly 2 views.")
+
+        # Split into two views
+        f1 = outputs[:, 0, ...]  # [B, dim]
+        f2 = outputs[:, 1, ...]  # [B, dim]
+
+        # Normalize embeddings
+        f1 = F.normalize(f1, dim=1)
+        f2 = F.normalize(f2, dim=1)
+
+        # Concatenate embeddings
+        embeddings = torch.cat([f1, f2], dim=0)  # [2B, dim]
+
+        # Compute similarity matrix
+        sim_matrix = torch.matmul(embeddings, embeddings.T) / self.temperature
+        # sim_matrix shape: [2B, 2B]
+
+        # Mask self-similarities
+        mask = torch.eye(2 * bsz, dtype=torch.bool).to(device)
+        sim_matrix = sim_matrix.masked_fill_(mask, float('-inf'))
+
+        # Subtract max logits for numerical stability
+        sim_matrix = sim_matrix - sim_matrix.max(dim=1, keepdim=True)[0].detach()
+
+        # The positive samples for each embedding are the corresponding augmented pair:
+        # For i in [0, B-1], the positive of f1[i] is f2[i] at index i+B.
+        # For i in [B, 2B-1], the positive of f2[i-B] is f1[i-B] at index i-B.
+        # Create labels accordingly:
+        # The target for f1[i] (row i) is i+B
+        # The target for f2[i] (row i+B) is i
+        labels = torch.arange(bsz, dtype=torch.long, device=device)
+        labels = torch.cat([labels + bsz, labels], dim=0)  # [2B]
+
+        # Compute NT-Xent loss using CrossEntropy
+        loss = self.ce(sim_matrix, labels)
+        return loss
+
 LOSS_MAP = {
     "supcon_sleepyco": SupConLoss,
     "reconstruction_loss_maeeg": ReconstructionLoss,
     "l2": L2Loss,
     "cross_entropy": CrossEntropyLoss,
+    "NTXent": NTXentLoss,
 }
 
 SUPPORTED_LOSS_FUNCTIONS = list(LOSS_MAP.keys())

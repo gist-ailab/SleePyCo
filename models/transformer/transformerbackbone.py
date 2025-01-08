@@ -3,7 +3,6 @@ import torch
 import numpy as np
 import torch.nn as nn
 
-from loss import LOSS_MAP
 from models.transformer.signal_backbone import SignalBackBone
 from models.transformer.transformer import AutoEncoderViT
 from models.base_model import BaseModel
@@ -74,7 +73,7 @@ class TransformerBackbone(BaseModel):
         if self.mode == 'pretrain_mp':
             return pred # pred output is (50, 1, 3000)
         else:
-            return latent[:, :1, :].squeeze() # output is (1, 51, 3000) so remove cls token and dummy dim
+            return latent[:, :1, :].squeeze(1) # remove dummy dimension
 
     def make_frame(self, x: torch.Tensor) -> torch.Tensor:
         """
