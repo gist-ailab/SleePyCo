@@ -13,22 +13,20 @@
 
     "backbone": {
         "_comment": "This model uses internal masking on the latent frames and not full signal restoration, also using internal loss calculation. Thats why mask params and loss params need to be defined here",
-        "mask_ratio": 0.75,
-        "loss": "l2",
         "name": "Transformer",
         "fs": 100,
         "second": 30,
         "time_window": 5,
         "time_step": 0.5,
-        "encoder_embed_dim": 256,
+        "encoder_embed_dim": 128,
         "encoder_heads": 8,
         "encoder_depths": 6,
         "decoder_embed_dim": 128,
         "decoder_heads": 4,
         "decoder_depths": 8,
         "projection_hidden": [1024, 512],
-        "use_sig_backbone": true,
-        "input_size": 500
+        "use_sig_backbone": false,
+        "input_size": 3000
     },
 
     "classifier": {
