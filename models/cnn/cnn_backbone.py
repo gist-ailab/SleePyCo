@@ -18,9 +18,7 @@ Returns:
 
 class CnnBackbone(BaseModel):
 
-    SUPPORTED_MODES = ['pretrain_mp', 'pretrain']  # support Contrastive Learning and Masked Prediction
-    INTERNAL_LOSS_CALCULATION = False
-    INTERNAL_MASKING = False
+    SUPPORTED_MODES = ["pretrain_mp", "pretrain", "train-classifier", "classification", "gen-embeddings"]  # support Contrastive Learning and Masked Prediction
 
     def __init__(self, mode: str, conf: dict):
         super(CnnBackbone, self).__init__(mode)
@@ -62,13 +60,13 @@ class CnnBackbone(BaseModel):
         """
         c3, c4, c5 = self.encoder(x)
         if self.mode == 'pretrain_mp':
-            return [self.decoder(c5)]  # Note that here the mp training happens on latent dim (128,6) while for all other modes we output (128,1) latent
+            return self.decoder(c5)  # Note that here the mp training happens on latent dim (128,6) while for all other modes we output (128,1) latent
                                        # Mean on eval benchmarks of MP train we take latent trained on (128,6) and AvgPool
         else:
             # includes all other modes including 'pretrain'. Outputs normalized 128 dim latent
             non_normalized_latent = self.projection_head(c5)
             normalized_latent = F.normalize(non_normalized_latent, dim=1)
-            return [normalized_latent]
+            return normalized_latent.squeeze(-1) # remove dummy dimension in (B, 128, 1)
 
 
 class Decoder(nn.Module):
