@@ -72,9 +72,9 @@ class TransformerBackbone(BaseModel):
         latent, pred = self.autoencoder(x)
         # print(f"latent shape {latent.shape}")
         if self.mode == 'pretrain_mp':
-            return [pred] # pred output is (50, 1, 3000)
+            return pred # pred output is (50, 1, 3000)
         else:
-            return [latent[:, :1, :].squeeze()] # output is (1, 51, 3000) so remove cls token and dummy dim
+            return latent[:, :1, :].squeeze() # output is (1, 51, 3000) so remove cls token and dummy dim
 
     def make_frame(self, x: torch.Tensor) -> torch.Tensor:
         """

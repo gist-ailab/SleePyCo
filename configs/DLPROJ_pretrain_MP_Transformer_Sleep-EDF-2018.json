@@ -26,7 +26,9 @@
         "decoder_depths": 8,
         "projection_hidden": [1024, 512],
         "use_sig_backbone": false,
-        "input_size": 3000
+        "input_size": 3000,
+        "num_patches": 1,
+        "use_cls": false
     },
 
     "classifier": {
@@ -41,6 +43,7 @@
     "training_params": {
         "_comment": "All default sleepyco settings despite 'mode'. 'pretrain_mp' is passed to dataloader to use the base EEG epochs, not two-view as in 'pretrain'",
         "mode": "pretrain_mp",
+        "loss": "l2",
         "max_epochs": 500,
         "batch_size": 128,
         "lr": 0.0005,

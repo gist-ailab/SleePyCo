@@ -154,11 +154,6 @@ class L2Loss(nn.Module):
         if mask is not None:
             assert inputs.shape == mask.shape
 
-        #if inputs.ndim > 2:
-        #    batch_size = inputs.shape[0]
-        #    inputs = inputs.reshape(batch_size, -1)
-        #    outputs = outputs.reshape(batch_size, -1)
-        # treat non batch dim as vector to calculate similarity form and then calc mean over batch dim to get number
         square_dist = (outputs - inputs).pow(2)
         if reduction == 'mean':
             if mask is not None:

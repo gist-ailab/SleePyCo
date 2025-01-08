@@ -49,7 +49,7 @@ class OneFoldTrainer:
         self.writer = SummaryWriter(log_dir=os.path.join("logs", config['name'], f"fold-{fold}"))
 
         # load selected loss with its parameters (if these parameters are given) - only used if model has no internal loss calculation
-        assert self.tp_cfg.get('loss', False)
+        assert 'loss' in self.tp_cfg.keys()
         assert self.tp_cfg['loss'] in SUPPORTED_LOSS_FUNCTIONS
         self.criterion = LOSS_MAP[self.tp_cfg['loss']](
             **(self.tp_cfg['loss_params'] if 'loss_params' in self.tp_cfg.keys() else {}))
@@ -69,6 +69,7 @@ class OneFoldTrainer:
 
     def switch_mode(self, mode, set_masking=False):
         self.model.module.switch_mode(mode)
+        self.model.to(self.device)
         self.cfg['training_params']['mode'] = mode
         self.tp_cfg['mode'] = mode
         self.dset_cfg['masking'] = set_masking
@@ -84,6 +85,7 @@ class OneFoldTrainer:
     def reload_best_model_weights(self):
         # reload best model weights from checkpoint
         self.model.load_state_dict(torch.load(os.path.join(self.ckpt_path, self.ckpt_name)), strict=False)
+        self.model.to(self.device)
 
 
     def build_model(self):
@@ -202,7 +204,7 @@ class OneFoldTrainer:
 
             y_true = np.concatenate([y_true, labels.cpu().numpy()])
             y_pred = np.concatenate([y_pred, outputs_sum.cpu().numpy()])
-            print("progress")
+
             progress_bar(i, len(self.loader_dict['test']), 'Loss: %.3f | Acc: %.3f%% (%d/%d)'
                          % (eval_loss / (i + 1), 100. * correct / total, correct, total))
 
@@ -252,6 +254,7 @@ class OneFoldTrainer:
         self.model.eval()
         embeddings = []
         for i, (inputs, labels) in enumerate(self.loader_dict['test']):
+            inputs = inputs.to(self.device)
             embedding = self.model(inputs)[0]
             embeddings.append(embedding)
         embedding_torch = torch.cat(embeddings, dim=0)
@@ -279,6 +282,9 @@ class OneFoldTrainer:
 
 
 def main():
+    """
+    Will train the backbone, generate embeddings, train a mlp classifier and benchmark it
+    """
     warnings.filterwarnings("ignore", category=DeprecationWarning)
     warnings.filterwarnings("ignore", category=UserWarning)
 
@@ -321,7 +327,10 @@ def main():
     summarize_result(config, 1, y_pred, y_true)
 
 
-def test():
+def test(train_bb=False, gen_embed=False, train_classifier=False, benchmark_classifier=False):
+    """
+    Takes the transformer model and performs tests as wished.
+    """
     sample_cfg = {
         "name": "test",
         "_comment": "Pretraining Encoder backbone using MaskedPrediction. Run train_mp.py script with this config. Projection Head is not used with MP training that's why its omitted",
@@ -339,9 +348,23 @@ def test():
         },
 
         "backbone": {
-            "_comment": "Does not use internal masking thus we have masking activated in the dataloader",
-            "name": "CnnOnly",
-            "init_weights": False
+            "_comment": "This model uses internal masking on the latent frames and not full signal restoration, also using internal loss calculation. Thats why mask params and loss params need to be defined here",
+            "name": "Transformer",
+            "fs": 100,
+            "second": 30,
+            "time_window": 5,
+            "time_step": 0.5,
+            "encoder_embed_dim": 128,
+            "encoder_heads": 8,
+            "encoder_depths": 6,
+            "decoder_embed_dim": 128,
+            "decoder_heads": 4,
+            "decoder_depths": 8,
+            "projection_hidden": [1024, 512],
+            "use_sig_backbone": False,
+            "input_size": 3000,
+            "num_patches": 1,
+            "use_cls": False
         },
 
         "classifier": {
@@ -375,10 +398,30 @@ def test():
         def __init__(self, gpu):
             self.gpu = gpu
 
-    trainer = OneFoldTrainer(Args(0), 1, sample_cfg)
-    # if want to test training uncomment line below
-    # trainer.run()
+    trainer = OneFoldTrainer(Args("0"), 1, sample_cfg)
+    if train_bb:
+        print("[INFO] Run Backbone Training...")
+        trainer.run()
+    if gen_embed:
+        print("[INFO] Generate and store embeddings...")
+        trainer.switch_mode('gen-embeddings', set_masking=False)
+        trainer.reload_best_model_weights()
+        trainer.generate_and_store_embeddings()
+    if train_classifier:
+        #  Train classifier with frozen backbone
+        print("[INFO] Training the classifier...")
+        trainer.switch_mode('train-classifier', set_masking=False)
+        trainer.train_classifier()
+    if benchmark_classifier:
+        # Perform classification
+        print("[INFO] Run classification benchmarks...")
+        trainer.switch_mode('classification', set_masking=False)
+        trainer.reload_best_model_weights()
+        y_pred, y_true = trainer.evaluate_classifier()
+        summarize_result(sample_cfg, 1, y_pred, y_true)
 
 
 if __name__ == "__main__":
+    # Uncomment test for testing
+    #test(train_bb=False, gen_embed=False, train_classifier=False, benchmark_classifier=False)
     main()
