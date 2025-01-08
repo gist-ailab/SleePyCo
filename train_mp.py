@@ -8,7 +8,6 @@ Usage:
         - you can additionally also add loss-params a dict of named arguments you pass to your loss
 """
 
-import time
 import json
 import argparse
 import warnings
@@ -65,6 +64,27 @@ class OneFoldTrainer:
         self.ckpt_name = 'ckpt_fold-{0:02d}.pth'.format(self.fold)
         self.early_stopping = EarlyStopping(patience=self.es_cfg['patience'], verbose=True, ckpt_path=self.ckpt_path,
                                             ckpt_name=self.ckpt_name, mode=self.es_cfg['mode'])
+        # save initialized weights for case of testing
+        self.early_stopping.save_checkpoint(-np.inf, self.model)
+
+    def switch_mode(self, mode, set_masking=False):
+        self.model.module.switch_mode(mode)
+        self.cfg['training_params']['mode'] = mode
+        self.tp_cfg['mode'] = mode
+        self.dset_cfg['masking'] = set_masking
+        self.cfg['dataset']['masking'] = set_masking
+        self.dset_masking_activated = ("masking" in self.dset_cfg.keys() and self.dset_cfg["masking"])
+        # reinitialize datasets/loaders for new mode
+        self.loader_dict = self.build_dataloader()
+        # change criterion to classification loss if training classifier
+        if mode == 'train-classifier':
+            print('[INFO] Training classifier... thus setting criterion to be CrossEntropy]')
+            self.criterion = LOSS_MAP["cross_entropy"]()
+
+    def reload_best_model_weights(self):
+        # reload best model weights from checkpoint
+        self.model.load_state_dict(torch.load(os.path.join(self.ckpt_path, self.ckpt_name)), strict=False)
+
 
     def build_model(self):
         model = MainModelDLProject(self.cfg)
@@ -153,6 +173,41 @@ class OneFoldTrainer:
         self.writer.add_scalar("train/epoch-avg-loss", avg_train_loss, epoch)
         print(f"\n[INFO] Epoch {epoch}, Epochal Avg - Training Loss: {avg_train_loss:.6f}")
 
+    @torch.no_grad()
+    def evaluate_classifier(self):
+        """
+        Evaluates Whole model including classifier on the test set
+        """
+        self.model.eval()
+        correct, total, eval_loss = 0, 0, 0
+        y_true = np.zeros(0)
+        y_pred = np.zeros((0, self.cfg['classifier']['num_classes']))
+
+        for i, (inputs, labels) in enumerate(self.loader_dict['test']):
+            loss = 0
+            total += labels.size(0)
+            inputs = inputs.to(self.device)
+            labels = labels.view(-1).to(self.device)
+
+            outputs = self.model(inputs)
+            outputs_sum = torch.zeros_like(outputs[0])
+
+            for j in range(len(outputs)):
+                loss += F.cross_entropy(outputs[j], labels)
+                outputs_sum += outputs[j]
+
+            eval_loss += loss.item()
+            predicted = torch.argmax(outputs_sum, 1)
+            correct += predicted.eq(labels).sum().item()
+
+            y_true = np.concatenate([y_true, labels.cpu().numpy()])
+            y_pred = np.concatenate([y_pred, outputs_sum.cpu().numpy()])
+            print("progress")
+            progress_bar(i, len(self.loader_dict['test']), 'Loss: %.3f | Acc: %.3f%% (%d/%d)'
+                         % (eval_loss / (i + 1), 100. * correct / total, correct, total))
+
+        return y_true, y_pred
+
 
     @torch.no_grad()
     def evaluate(self, mode):
@@ -193,6 +248,26 @@ class OneFoldTrainer:
         self.writer.add_scalar(f"{mode.capitalize()}/loss-avg", avg_eval_loss, self.train_iter)
         return eval_loss
 
+    def generate_and_store_embeddings(self):
+        self.model.eval()
+        embeddings = []
+        for i, (inputs, labels) in enumerate(self.loader_dict['test']):
+            embedding = self.model(inputs)[0]
+            embeddings.append(embedding)
+        embedding_torch = torch.cat(embeddings, dim=0)
+        embeddings_path = os.path.join(self.ckpt_path, 'embeddings.pt')
+        print("[INFO] Storing embeddings to {}".format(embeddings_path))
+        torch.save(embedding_torch, embeddings_path)
+
+    def train_classifier(self):
+        self.model.train()
+        for epoch in range(self.tp_cfg['classifier_epochs']):
+            print('\n[INFO] ClassifierTrain, Epoch: {}'.format(epoch))
+            self.train_one_epoch(epoch)
+            if self.early_stopping.early_stop:
+                break
+
+
     def run(self):
         for epoch in range(self.tp_cfg['max_epochs']):
             print('\n[INFO] Fold: {}, Epoch: {}'.format(self.fold, epoch))
@@ -226,9 +301,83 @@ def main():
     # for our use-case we only need one split (no cross validation needed)
     trainer = OneFoldTrainer(args, 1, config)
     trainer.run()
-    #for fold in range(1, config['dataset']['num_splits'] + 1):
-    #    trainer = OneFoldTrainer(args, fold, config)
-    #    trainer.run()
+
+    # Generate embeddings for later benchmark of latent space - store to
+    print("[INFO] Generate and store embeddings...")
+    trainer.switch_mode('gen-embeddings', set_masking=False)
+    trainer.reload_best_model_weights()
+    trainer.generate_and_store_embeddings()
+
+    #  Train classifier with frozen backbone
+    print("[INFO] Training the classifier...")
+    trainer.switch_mode('train-classifier', set_masking=False)
+    trainer.train_classifier()
+
+    # Perform classification
+    print("[INFO] Run classification benchmarks...")
+    trainer.switch_mode('classification', set_masking=False)
+    trainer.reload_best_model_weights()
+    y_pred, y_true = trainer.evaluate_classifier()
+    summarize_result(config, 1, y_pred, y_true)
+
+
+def test():
+    sample_cfg = {
+        "name": "test",
+        "_comment": "Pretraining Encoder backbone using MaskedPrediction. Run train_mp.py script with this config. Projection Head is not used with MP training that's why its omitted",
+
+        "dataset": {
+            "name": "Sleep-EDF-2018",
+            "eeg_channel": "Fpz-Cz",
+            "num_splits": 10,
+            "seq_len": 1,
+            "target_idx": 0,
+            "root_dir": "./",
+            "masking": True,
+            "masking_type": "fixed_proportion_random",
+            "masking_ratio": 0.75
+        },
+
+        "backbone": {
+            "_comment": "Does not use internal masking thus we have masking activated in the dataloader",
+            "name": "CnnOnly",
+            "init_weights": False
+        },
+
+        "classifier": {
+            "_comment": "Classifier used to finetune it and benmchmark -> linear Evaluation",
+            "name": "DLProjMLP",
+            "input_dim": 128,
+            "hidden_dim": 256,
+            "dropout": 0.5,
+            "num_classes": 5
+        },
+
+        "training_params": {
+            "_comment": "All default sleepyco settings despite 'mode'. 'pretrain-mp' is passed to dataloader to use the base EEG epochs, not two-view as in 'pretrain'",
+            "mode": "pretrain_mp",
+            "loss": "l2",
+            "max_epochs": 2,
+            "batch_size": 16,
+            "lr": 0.0005,
+            "weight_decay": 0.0001,
+            "temperature": 0.07,
+            "val_period": 649,
+            "early_stopping": {
+                "mode": "min",
+                "patience": 4,
+                "_comment": "as validation is done at half an epoch, we max wait 4 validations(=2epochs)"
+            },
+            "classifier_epochs": 1
+        }
+    }
+    class Args:
+        def __init__(self, gpu):
+            self.gpu = gpu
+
+    trainer = OneFoldTrainer(Args(0), 1, sample_cfg)
+    # if want to test training uncomment line below
+    # trainer.run()
 
 
 if __name__ == "__main__":
