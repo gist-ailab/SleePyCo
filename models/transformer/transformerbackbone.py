@@ -69,10 +69,10 @@ class TransformerBackbone(BaseModel):
             x = self.frame_backbone(x)
 
         latent, pred = self.autoencoder(x)
-        print(f"latent shape {latent.shape}")
+        # print(f"latent shape {latent.shape}")
         if self.mode == 'pretrain_mp':
-            return [pred] # pred output is (1, 50, 3000)
-        elif self.mode == 'pretrain':
+            return [pred] # pred output is (50, 1, 3000)
+        else:
             return [latent[:, :1, :].squeeze()] # output is (1, 51, 3000) so remove cls token and dummy dim 
 
     def make_frame(self, x: torch.Tensor) -> torch.Tensor:
@@ -121,7 +121,7 @@ if __name__ == '__main__':
         "second": 30,
         "time_window": 5,
         "time_step": 0.5,
-        "encoder_embed_dim": 256,
+        "encoder_embed_dim": 128,
         "encoder_heads": 8,
         "encoder_depths": 6,
         "decoder_embed_dim": 128,
@@ -137,5 +137,5 @@ if __name__ == '__main__':
     m1 = TransformerBackbone(mode, conf)
     pred = m1.forward(x0)
     print(f"Pred: {type(pred)}, len={len(pred)}")
-    print(f"Pred-shape: {pred[0].shape}") # with sig backbone: (50, 51, 1472), without (1, 50, 3000)
+    print(f"Pred-shape: {pred[0].shape}") # with sig backbone: (50, 51, 1472), without (50, 1, 3000)
     # Regarding shape:  51 is probably num of frames/patches made from the 30s epoch! 500 is 5s-window in 10ms parts
