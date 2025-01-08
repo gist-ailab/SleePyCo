@@ -45,29 +45,21 @@ class OneFoldTrainer:
         self.train_iter = 0
         self.model = self.build_model()
         self.loader_dict = self.build_dataloader()
-        self.backbone_ref = self.model.module.model
 
         # create tensorboard writer
         self.writer = SummaryWriter(log_dir=os.path.join("logs", config['name'], f"fold-{fold}"))
 
         # load selected loss with its parameters (if these parameters are given) - only used if model has no internal loss calculation
-        if not self.backbone_ref.is_using_internal_loss():  # access backbone
-            assert self.tp_cfg.get('loss', False)
-            assert self.tp_cfg['loss'] in SUPPORTED_LOSS_FUNCTIONS
-            self.criterion = LOSS_MAP[self.tp_cfg['loss']](
-                **(self.tp_cfg['loss_params'] if 'loss_params' in self.tp_cfg.keys() else {}))
-        else:
-            # if internal loss is used print info
-            print("Backbone loaded uses Internal loss calculation! Model itself will check for correct loss params if needed for itself...")
+        assert self.tp_cfg.get('loss', False)
+        assert self.tp_cfg['loss'] in SUPPORTED_LOSS_FUNCTIONS
+        self.criterion = LOSS_MAP[self.tp_cfg['loss']](
+            **(self.tp_cfg['loss_params'] if 'loss_params' in self.tp_cfg.keys() else {}))
 
         self.optimizer = optim.Adam(self.model.parameters(), lr=self.tp_cfg['lr'],
                                     weight_decay=self.tp_cfg['weight_decay'])
 
         # check if masking is performed internally, in that case throw a warning if masking is also activated in dataset
         self.dset_masking_activated = ("masking" in self.dset_cfg.keys() and self.dset_cfg["masking"])
-        if self.backbone_ref.is_using_internal_masking() and self.dset_masking_activated:
-            warnings.warn("USING MASKING ON RAW DATA LEVEL AND INSIDE MODEL! IS THIS INTENTIONAL?")
-            time.sleep(2)
 
         self.ckpt_path = os.path.join('checkpoints', config['name'])
         self.ckpt_name = 'ckpt_fold-{0:02d}.pth'.format(self.fold)
@@ -80,7 +72,6 @@ class OneFoldTrainer:
         model = torch.nn.DataParallel(model, device_ids=list(range(len(self.args.gpu.split(",")))))
         model.to(self.device)
         print('[INFO] Model prepared, Device used: {} GPU:{}'.format(self.device, self.args.gpu))
-
         return model
 
     def build_dataloader(self):
@@ -94,11 +85,14 @@ class OneFoldTrainer:
         train_loader = DataLoader(dataset=train_dataset, **dataloader_args)
         val_dataset = EEGDataLoader(self.cfg, self.fold, set='val')
         val_loader = DataLoader(dataset=val_dataset, **dataloader_args)
+        test_dataset = EEGDataLoader(self.cfg, self.fold, set='test')
+        test_loader = DataLoader(dataset=test_dataset, batch_size=self.tp_cfg['batch_size'], shuffle=False,
+                                 num_workers=4 #* len(self.args.gpu.split(","))
+                                 ,pin_memory=True)
         print('[INFO] Dataloader prepared')
         print('[INFO] Batch-Size: {}'.format(self.tp_cfg['batch_size']))
-        print('[INFO] Train-Batches: {}, Val-Batches: {}'.format(len(train_loader), len(val_loader)))
-
-        return {'train': train_loader, 'val': val_loader}
+        print('[INFO] Train-Batches: {}, Val-Batches: {}, Test-Batches: {}'.format(len(train_loader), len(val_loader), len(test_loader)))
+        return {'train': train_loader, 'val': val_loader, 'test': test_loader}
 
     def train_one_epoch(self, epoch):
         """
@@ -118,25 +112,19 @@ class OneFoldTrainer:
             # if we want ot change that we need to change this script here!
             mask = None
             if self.dset_masking_activated:
-                assert not self.backbone_ref.is_using_internal_loss()
                 masked_input = inputs["masked_inputs"].to(self.device)
                 mask = inputs["mask"]
                 inputs = inputs["inputs"]
 
             inputs = inputs.to(self.device)
 
-            if not self.backbone_ref.is_using_internal_loss():
-                # Model is not using internal loss
-                if self.dset_masking_activated:
-                    outputs = self.model(masked_input)[0]
-                else:
-                    outputs = self.model(inputs)[0]
-
-                # calculate loss based on predictions, gt and whether a mask is given or not
-                loss += self.criterion(inputs, outputs, reduction='mean', mask=mask, labels=labels)
+            if self.dset_masking_activated:
+                outputs = self.model(masked_input)[0]
             else:
-                # Model is using internal loss, so output will be loss (needed inc ase of latent masked pred or framewise loss in transformer for example)
-                loss += self.model(inputs)[0]
+                outputs = self.model(inputs)[0]
+
+            # calculate loss based on predictions, gt and whether a mask is given or not
+            loss += self.criterion(inputs, outputs, reduction='mean', mask=mask, labels=labels)
 
             self.optimizer.zero_grad()
             loss.backward()
@@ -181,25 +169,19 @@ class OneFoldTrainer:
             # if we want ot change that we need to change this script here!
             mask = None
             if self.dset_masking_activated:
-                assert not self.backbone_ref.is_using_internal_loss()
                 masked_input = inputs["masked_inputs"].to(self.device)
                 mask = inputs["mask"]
                 inputs = inputs["inputs"]
 
             inputs = inputs.to(self.device)
 
-            if not self.backbone_ref.is_using_internal_loss():
-                # Model is not using internal loss
-                if self.dset_masking_activated:
-                    outputs = self.model(masked_input)[0]
-                else:
-                    outputs = self.model(inputs)[0]
-
-                # calculate loss based on predictions, gt and whether a mask is given or not
-                loss += self.criterion(inputs, outputs, reduction='mean', mask=mask, labels=labels)
+            if self.dset_masking_activated:
+                outputs = self.model(masked_input)[0]
             else:
-                # Model is using internal loss, so output will be loss (needed inc ase of latent masked pred or framewise loss in transformer for example)
-                loss += self.model(inputs)[0]
+                outputs = self.model(inputs)[0]
+
+            # calculate loss based on predictions, gt and whether a mask is given or not
+            loss += self.criterion(inputs, outputs, reduction='mean', mask=mask, labels=labels)
 
             eval_loss += loss.item()
 
