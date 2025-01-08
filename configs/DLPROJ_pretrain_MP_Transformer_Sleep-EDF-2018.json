@@ -13,27 +13,37 @@
 
     "backbone": {
         "_comment": "This model uses internal masking on the latent frames and not full signal restoration, also using internal loss calculation. Thats why mask params and loss params need to be defined here",
-        "mask_ratio": 0.75,
-        "loss": "l2",
         "name": "Transformer",
         "fs": 100,
         "second": 30,
         "time_window": 5,
         "time_step": 0.5,
-        "encoder_embed_dim": 256,
+        "encoder_embed_dim": 128,
         "encoder_heads": 8,
         "encoder_depths": 6,
         "decoder_embed_dim": 128,
         "decoder_heads": 4,
         "decoder_depths": 8,
         "projection_hidden": [1024, 512],
-        "use_sig_backbone": true,
-        "input_size": 500
+        "use_sig_backbone": false,
+        "input_size": 3000,
+        "num_patches": 1,
+        "use_cls": false
+    },
+
+    "classifier": {
+        "_comment": "Classifier used to finetune it and benmchmark -> linear Evaluation",
+        "name": "DLProjMLP",
+        "input_dim": 128,
+        "hidden_dim": 256,
+        "dropout": 0.5,
+        "num_classes": 5
     },
 
     "training_params": {
         "_comment": "All default sleepyco settings despite 'mode'. 'pretrain_mp' is passed to dataloader to use the base EEG epochs, not two-view as in 'pretrain'",
         "mode": "pretrain_mp",
+        "loss": "l2",
         "max_epochs": 500,
         "batch_size": 128,
         "lr": 0.0005,
@@ -44,6 +54,7 @@
             "mode": "min",
             "patience": 4,
             "_comment": "as validation is done at half an epoch, we max wait 4 validations(=2epochs)"
-        }
+        },
+        "classifier_epochs": 100
     }
 }

@@ -3,7 +3,6 @@ import torch
 import numpy as np
 import torch.nn as nn
 
-from loss import LOSS_MAP
 from models.transformer.signal_backbone import SignalBackBone
 from models.transformer.transformer import AutoEncoderViT
 from models.base_model import BaseModel
@@ -13,9 +12,8 @@ Transformer backbone Model: Model adapted from Neuronet (https://github.com/dlcj
 """
 class TransformerBackbone(BaseModel):
 
-    SUPPORTED_MODES = ['pretrain_mp', 'pretrain']  # support Contrastive Learning and Masked Prediction
-    INTERNAL_LOSS_CALCULATION = True  # this model calculates its loss during training(in train modes) internally.
-    INTERNAL_MASKING = True # TODO: make configurable ? (use frame bb with internal masking or no frame bb with full signal input to transformer)
+    SUPPORTED_MODES = ["pretrain_mp", "pretrain", "train-classifier", "classification", "gen-embeddings"]  # support Contrastive Learning and Masked Prediction
+
 
     def __init__(self, mode: str, conf: dict):
         super().__init__(mode) # check if mode supported and set self.mode
@@ -66,14 +64,16 @@ class TransformerBackbone(BaseModel):
         if self.use_sig_backbone:
             x = torch.squeeze(x, 1)
             x = self.make_frame(x)
+            print(f"X-After-MakeFrames-Shape: {x.shape}")
             x = self.frame_backbone(x)
+            print(f"X-Shap after frame BB: {x.shape}")
 
         latent, pred = self.autoencoder(x)
         # print(f"latent shape {latent.shape}")
         if self.mode == 'pretrain_mp':
-            return [pred] # pred output is (50, 1, 3000)
+            return pred # pred output is (50, 1, 3000)
         else:
-            return [latent[:, :1, :].squeeze()] # output is (1, 51, 3000) so remove cls token and dummy dim 
+            return latent[:, :1, :].squeeze(1) # remove dummy dimension
 
     def make_frame(self, x: torch.Tensor) -> torch.Tensor:
         """
@@ -114,7 +114,7 @@ def frame_size(fs, second, time_window, time_step):
 
 
 if __name__ == '__main__':
-    mode = 'pretrain_mp'
+    mode = 'pretrain'
     conf = {
         "name": "Transformer",
         "fs": 100,

@@ -8,15 +8,27 @@
         "seq_len": 1,
         "target_idx": 0,
         "root_dir": "./",
-        "masking": true,
-        "masking_type": "fixed_proportion_random",
-        "masking_ratio": 0.75
+        "masking": false
     },
 
     "backbone": {
-        "_comment": "Does not use internal masking thus we have masking activated in the dataloader",
-        "name": "CnnOnly",
-        "init_weights": false
+        "_comment": "This model uses internal masking on the latent frames and not full signal restoration, also using internal loss calculation. Thats why mask params and loss params need to be defined here",
+        "name": "Transformer",
+        "fs": 100,
+        "second": 30,
+        "time_window": 5,
+        "time_step": 0.5,
+        "encoder_embed_dim": 128,
+        "encoder_heads": 8,
+        "encoder_depths": 6,
+        "decoder_embed_dim": 128,
+        "decoder_heads": 4,
+        "decoder_depths": 8,
+        "projection_hidden": [1024, 512],
+        "use_sig_backbone": false,
+        "input_size": 3000,
+        "num_patches": 1,
+        "use_cls": false
     },
 
     "classifier": {
@@ -29,9 +41,9 @@
     },
 
     "training_params": {
-        "_comment": "All default sleepyco settings despite 'mode'. 'pretrain-mp' is passed to dataloader to use the base EEG epochs, not two-view as in 'pretrain'",
-        "mode": "pretrain_mp",
-        "loss": "l2",
+        "_comment": "All default sleepyco settings despite 'mode'. 'pretrain_mp' is passed to dataloader to use the base EEG epochs, not two-view as in 'pretrain'",
+        "mode": "pretrain",
+        "loss": "NTXent",
         "max_epochs": 500,
         "batch_size": 128,
         "lr": 0.0005,

@@ -1,11 +1,13 @@
 """
-This file contains training logic for the Masked Prediction Paradigm. Aims to allow training as in MAEEG or EEg2Rep.
+This file contains training logic for the Contrastive Learning Paradigm.
+
 Usage:
-    - Create a config that specifies dataset, model and loss function
-    - dataset: make sure to use the correct training mode so dataloader and model behave correctly
-        - ex. pretrain_mp lets dataloader only load single eeg epochs not two-views augmented!
-    - loss: specify a correct loss function. Add a supported loss name as 'loss' to train config
-        - you can additionally also add loss-params a dict of named arguments you pass to your loss
+    python train_crl_dlproj.py --config <path-to-json-config-file> [options]
+
+Example config files fo our project:
+    - configs/DLPROJ_pretrain_CRL_CNN_Attention_Sleep-EDF-2018.json
+    - configs/DLPROJ_pretrain_CRL_CNN_Sleep-EDF-2018.json
+    - configs/DLPROJ_pretrain_CRL_Transformer_Sleep-EDF-2018.json
 """
 
 import json
@@ -33,9 +35,9 @@ class OneFoldTrainer:
         self.dset_cfg = config['dataset']
 
         # assert that the correct training mode is set: 'pretrain_mp'. This makes sure the models and dataset show correct behavior
-        if not 'mode' in self.tp_cfg.keys() and self.tp_cfg['mode'] == 'pretrain_mp':
+        if not 'mode' in self.tp_cfg.keys() and self.tp_cfg['mode'] == 'pretrain':
             raise ValueError(
-                'Running train_mp.py, only mode pretrain_mp is supported and must be declared in the config file')
+                'Running train_crl_dlproj.py, only mode pretrain is supported and must be declared in the config file')
 
         self.device = get_device(preference="cuda")
         print('[INFO] Config name: {}'.format(config['name']))
@@ -58,7 +60,9 @@ class OneFoldTrainer:
                                     weight_decay=self.tp_cfg['weight_decay'])
 
         # check if masking is performed internally, in that case throw a warning if masking is also activated in dataset
-        self.dset_masking_activated = ("masking" in self.dset_cfg.keys() and self.dset_cfg["masking"])
+        if "masking" in self.dset_cfg.keys() and self.dset_cfg["masking"]:
+            raise ValueError("masking is not supported for training with crl only!")
+
 
         self.ckpt_path = os.path.join('checkpoints', config['name'])
         self.ckpt_name = 'ckpt_fold-{0:02d}.pth'.format(self.fold)
@@ -72,9 +76,6 @@ class OneFoldTrainer:
         self.model.to(self.device)
         self.cfg['training_params']['mode'] = mode
         self.tp_cfg['mode'] = mode
-        self.dset_cfg['masking'] = set_masking
-        self.cfg['dataset']['masking'] = set_masking
-        self.dset_masking_activated = ("masking" in self.dset_cfg.keys() and self.dset_cfg["masking"])
         # reinitialize datasets/loaders for new mode
         self.loader_dict = self.build_dataloader()
         # change criterion to classification loss if training classifier
@@ -116,37 +117,36 @@ class OneFoldTrainer:
         print('[INFO] Train-Batches: {}, Val-Batches: {}, Test-Batches: {}'.format(len(train_loader), len(val_loader), len(test_loader)))
         return {'train': train_loader, 'val': val_loader, 'test': test_loader}
 
-    def train_one_epoch(self, epoch):
+    def train_one_epoch(self, epoch, classifier=False):
         """
         We modify this method from train_crl.py to be able to deal with only raw single eeg epochs and not the two-view
         augmented approach.
+
+        @params:
+            classifier:bool     Specifies whether the training is for the classifier or the backbone. Difference is that in case of classifier training
+                                only one view epoch is loaded and CE loss is used.
         """
         self.model.train()
         train_loss = 0
 
         for i, (inputs, labels) in enumerate(self.loader_dict['train']):
             # input-shape:(B, 1, 3000), labels.shape: (B,) -> dummy dim is removed in models that don't need it.
-
             loss = 0
             labels = labels.view(-1).to(self.device)  # No effect in our case!
 
-            # if dset level masking is activated unpack values accordingly, currently only supported if no internal loss is calculated
-            # if we want ot change that we need to change this script here!
-            mask = None
-            if self.dset_masking_activated:
-                masked_input = inputs["masked_inputs"].to(self.device)
-                mask = inputs["mask"]
-                inputs = inputs["inputs"]
+            if not classifier:
+                inputs = torch.cat([inputs[0], inputs[1]], dim=0).to(self.device)
 
             inputs = inputs.to(self.device)
 
-            if self.dset_masking_activated:
-                outputs = self.model(masked_input)[0]
-            else:
-                outputs = self.model(inputs)[0]
+            outputs = self.model(inputs)[0]
 
             # calculate loss based on predictions, gt and whether a mask is given or not
-            loss += self.criterion(inputs, outputs, reduction='mean', mask=mask, labels=labels)
+            if not classifier:
+                f1, f2 = torch.split(outputs, [labels.size(0), labels.size(0)], dim=0)
+                outputs = torch.cat([f1.unsqueeze(1), f2.unsqueeze(1)], dim=1)
+
+            loss += self.criterion(inputs, outputs=outputs, reduction='mean', mask=None, labels=labels if classifier else None) # We assume using the NTXent loss here!
 
             self.optimizer.zero_grad()
             loss.backward()
@@ -163,7 +163,7 @@ class OneFoldTrainer:
             if self.train_iter % self.tp_cfg['val_period'] == 0:
                 print('')
                 print(f'[INFO] Starting evaluation...')
-                val_loss = self.evaluate(mode='val')
+                val_loss = self.evaluate(mode='val', classifier=classifier)
                 self.early_stopping(None, val_loss, self.model)
                 self.model.train()
                 if self.early_stopping.early_stop:
@@ -176,7 +176,7 @@ class OneFoldTrainer:
         print(f"\n[INFO] Epoch {epoch}, Epochal Avg - Training Loss: {avg_train_loss:.6f}")
 
     @torch.no_grad()
-    def evaluate_classifier(self):
+    def benchmark_classifier(self):
         """
         Evaluates Whole model including classifier on the test set
         """
@@ -212,7 +212,10 @@ class OneFoldTrainer:
 
 
     @torch.no_grad()
-    def evaluate(self, mode):
+    def evaluate(self, mode, classifier=False):
+        """
+        Runs the validation during model training on the val set.
+        """
         self.model.eval()
         eval_loss = 0
 
@@ -220,30 +223,21 @@ class OneFoldTrainer:
             # input-shape:(B, 1, 3000), labels.shape: (B,) -> dummy dim is removed in models that don't need it.
 
             loss = 0
-            labels = labels.view(-1).to(self.device)  # No effect in our case!
-
-            # if dset level masking is activated unpack values accordingly, currently only supported if no internal loss is calculated
-            # if we want ot change that we need to change this script here!
-            mask = None
-            if self.dset_masking_activated:
-                masked_input = inputs["masked_inputs"].to(self.device)
-                mask = inputs["mask"]
-                inputs = inputs["inputs"]
 
             inputs = inputs.to(self.device)
+            labels = labels.view(-1).to(self.device)
 
-            if self.dset_masking_activated:
-                outputs = self.model(masked_input)[0]
-            else:
-                outputs = self.model(inputs)[0]
+            outputs = self.model(inputs)[0]
 
             # calculate loss based on predictions, gt and whether a mask is given or not
-            loss += self.criterion(inputs, outputs, reduction='mean', mask=mask, labels=labels)
+            if not classifier:
+                outputs = outputs.unsqueeze(1).repeat(1, 2, 1)
+            loss += self.criterion(inputs, outputs=outputs, reduction='mean', mask=None, labels=labels if classifier else None)  # We assume using the NTXent
 
             eval_loss += loss.item()
 
             progress_bar(i, len(self.loader_dict[mode]),
-                         'Lr: %.4e | Loss: %.4f' % (get_lr(self.optimizer), eval_loss / (i + 1)))
+                         'Lr: %.4e | Loss: %.6f' % (get_lr(self.optimizer), eval_loss / (i + 1)))
 
         avg_eval_loss = eval_loss / len(self.loader_dict[mode])
         print(f"[INFO] {mode.capitalize()} Eval-Loss: {avg_eval_loss:.4f}")
@@ -266,7 +260,7 @@ class OneFoldTrainer:
         self.model.train()
         for epoch in range(self.tp_cfg['classifier_epochs']):
             print('\n[INFO] ClassifierTrain, Epoch: {}'.format(epoch))
-            self.train_one_epoch(epoch)
+            self.train_one_epoch(epoch, classifier=True)
             if self.early_stopping.early_stop:
                 break
 
@@ -323,7 +317,7 @@ def main():
     print("[INFO] Run classification benchmarks...")
     trainer.switch_mode('classification', set_masking=False)
     trainer.reload_best_model_weights()
-    y_pred, y_true = trainer.evaluate_classifier()
+    y_pred, y_true = trainer.benchmark_classifier()
     summarize_result(config, 1, y_pred, y_true)
 
 
@@ -342,7 +336,7 @@ def test(train_bb=False, gen_embed=False, train_classifier=False, benchmark_clas
             "seq_len": 1,
             "target_idx": 0,
             "root_dir": "./",
-            "masking": True,
+            "masking": False,
             "masking_type": "fixed_proportion_random",
             "masking_ratio": 0.75
         },
@@ -378,8 +372,8 @@ def test(train_bb=False, gen_embed=False, train_classifier=False, benchmark_clas
 
         "training_params": {
             "_comment": "All default sleepyco settings despite 'mode'. 'pretrain-mp' is passed to dataloader to use the base EEG epochs, not two-view as in 'pretrain'",
-            "mode": "pretrain_mp",
-            "loss": "l2",
+            "mode": "pretrain",
+            "loss": "NTXent",
             "max_epochs": 2,
             "batch_size": 16,
             "lr": 0.0005,
@@ -417,11 +411,11 @@ def test(train_bb=False, gen_embed=False, train_classifier=False, benchmark_clas
         print("[INFO] Run classification benchmarks...")
         trainer.switch_mode('classification', set_masking=False)
         trainer.reload_best_model_weights()
-        y_pred, y_true = trainer.evaluate_classifier()
+        y_pred, y_true = trainer.benchmark_classifier()
         summarize_result(sample_cfg, 1, y_pred, y_true)
 
 
 if __name__ == "__main__":
     # Uncomment test for testing
-    #test(train_bb=False, gen_embed=False, train_classifier=False, benchmark_classifier=False)
+    # test(train_bb=False, gen_embed=False, train_classifier=False, benchmark_classifier=False)
     main()

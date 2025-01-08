@@ -15,7 +15,7 @@
 
     "backbone": {
         "_comment": "Does not use internal masking thus we have masking activated in the dataloader",
-        "name": "CnnOnly",
+        "name": "Cnn+Attention",
         "init_weights": false
     },
 

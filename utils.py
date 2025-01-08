@@ -154,7 +154,7 @@ class EarlyStopping:
             self.save_checkpoint(val_metric, model)
         elif score < self.best_score + self.delta:
             self.counter += 1
-            print(f'EarlyStopping counter: {self.counter} out of {self.patience}\n')
+            print(f'EarlyStopping counter: {self.counter} out of {self.patience}. Having score: {score}.  Current best_score/delta {self.best_score}/{self.delta}\n')
             if self.counter >= self.patience:
                 self.early_stop = True
         else:

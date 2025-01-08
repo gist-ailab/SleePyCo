@@ -76,7 +76,9 @@ class AutoEncoderViT(nn.Module):
 
     def forward_decoder(self, x):
         # embed tokens
-        x = self.decoder_embed(x[:, 1:, :])
+        if self.use_cls:
+            x = x[:, 1:, :]
+        x = self.decoder_embed(x)
 
         # add pos embed
         x = x + self.decoder_pos_embed

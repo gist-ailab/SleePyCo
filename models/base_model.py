@@ -16,8 +16,6 @@ class BaseModel(nn.Module, abc.ABC):
     """
 
     SUPPORTED_MODES = []  # Should be overridden by subclasses
-    INTERNAL_LOSS_CALCULATION = False
-    INTERNAL_MASKING = False
 
     def __init__(self, mode, *args, **kwargs):
         """
@@ -57,14 +55,11 @@ class BaseModel(nn.Module, abc.ABC):
         """
         pass
 
+    def switch_mode(self, mode):
+        self.mode = mode
+
     def is_mode_supported(self, mode_to_check: str) -> bool:
         return mode_to_check in self.SUPPORTED_MODES
-
-    def is_using_internal_loss(self) -> bool:
-        return self.INTERNAL_LOSS_CALCULATION
-
-    def is_using_internal_masking(self) -> bool:
-        return self.INTERNAL_MASKING
 
 
 # Example subclass
