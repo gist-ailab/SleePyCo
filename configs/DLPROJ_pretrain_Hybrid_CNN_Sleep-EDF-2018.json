@@ -1,0 +1,46 @@
+{
+    "_comment": "Pretraining Encoder backbone using MaskedPrediction AND CRL. Run train_hybrid.py script with this config. Projection Head is not used with MP training that's why its omitted",
+
+    "dataset": {
+        "name": "Sleep-EDF-2018",
+        "eeg_channel": "Fpz-Cz",
+        "num_splits": 10,
+        "seq_len": 1,
+        "target_idx": 0,
+        "root_dir": "./",
+        "masking": false
+    },
+
+    "backbone": {
+        "_comment": "Does not use internal masking thus we have masking activated in the dataloader",
+        "name": "CnnOnly",
+        "init_weights": false
+    },
+
+    "classifier": {
+        "_comment": "Classifier used to finetune it and benchmark -> linear Evaluation",
+        "name": "DLProjMLP",
+        "input_dim": 128,
+        "hidden_dim": 256,
+        "dropout": 0.5,
+        "num_classes": 5
+    },
+
+    "training_params": {
+        "mode": "pretrain-hybrid",
+        "loss_crl": "NTXent",
+        "loss_mp": "l2",
+        "max_epochs": 500,
+        "batch_size": 128,
+        "lr": 0.0005,
+        "weight_decay": 0.0001,
+        "temperature": 0.07,
+        "val_period": 649,
+        "early_stopping": {
+            "mode": "min",
+            "patience": 4,
+            "_comment": "as validation is done at half an epoch, we max wait 4 validations(=2epochs)"
+        },
+        "classifier_epochs": 100
+    }
+}
