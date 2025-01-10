@@ -479,5 +479,5 @@ def test(train_bb=False, gen_embed=False, train_classifier=False, benchmark_clas
 
 if __name__ == "__main__":
     # Uncomment test for testing
-    test(train_bb=False, gen_embed=False, train_classifier=False, benchmark_classifier=True)
-    #main()
+    #test(train_bb=False, gen_embed=False, train_classifier=False, benchmark_classifier=True)
+    main()
