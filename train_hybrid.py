@@ -134,6 +134,8 @@ class OneFoldTrainer:
         """
         self.model.train()
         train_loss = 0
+        train_mode = 'classifier' if self.tp_cfg['mode'] == 'train-classifier' else 'backbone'
+
 
         for i, (inputs, labels) in enumerate(self.loader_dict['train']):
             # inputs for backbone train: [{inputs, masked_inp, mask}, input_a, input_b]
@@ -156,8 +158,11 @@ class OneFoldTrainer:
                 reconstruction, _, _ = torch.split(outputs[0], [labels.size(0), labels.size(0), labels.size(0)], dim=0)
                 _, latent_1, latent_2 = torch.split(outputs[1], [labels.size(0), labels.size(0), labels.size(0)], dim=0)
                 latent_outputs = torch.cat([latent_1.unsqueeze(1), latent_2.unsqueeze(1)], dim=1)
-                loss += self.criterion_mp(original_inputs, outputs=reconstruction, reduction='mean', mask=mask, labels=None)
-                loss += self.criterion_crl(None, outputs=latent_outputs, mask=None, labels=None) * self.alpha_crl
+                mp_loss = self.criterion_mp(original_inputs, outputs=reconstruction, reduction='mean', mask=mask, labels=None)
+                crl_loss = self.criterion_crl(None, outputs=latent_outputs, mask=None, labels=None)
+                loss += mp_loss + self.alpha_crl * crl_loss
+                self.writer.add_scalar(f"train/loss-mp", mp_loss.item(), self.train_iter)
+                self.writer.add_scalar(f"train/loss-crl", crl_loss.item(), self.train_iter)
             else:
                 # for classification we only expect logit output
                 outputs = outputs[0]
@@ -167,7 +172,7 @@ class OneFoldTrainer:
             loss.backward()
             self.optimizer.step()
 
-            self.writer.add_scalar("train/loss", loss.item(), self.train_iter)
+            self.writer.add_scalar(f"train/total-loss-{train_mode}", loss.item(), self.train_iter)
             train_loss += loss.item()
             self.train_iter += 1
 
@@ -178,7 +183,10 @@ class OneFoldTrainer:
             if self.train_iter % self.tp_cfg['val_period'] == 0:
                 print('')
                 print(f'[INFO] Starting evaluation...')
-                val_loss = self.evaluate(mode='val', classifier=classifier)
+                if classifier:
+                    val_loss, _, _ = self.benchmark_classifier(mode='val') 
+                else:
+                    val_loss = self.evaluate(mode='val')
                 self.early_stopping(None, val_loss, self.model)
                 self.model.train()
                 if self.early_stopping.early_stop:
@@ -187,11 +195,11 @@ class OneFoldTrainer:
 
         # Log average training loss of an epoch to TensorBoard
         avg_train_loss = train_loss / len(self.loader_dict['train'])
-        self.writer.add_scalar("train/epoch-avg-loss", avg_train_loss, epoch)
+        self.writer.add_scalar(f"train/epoch-avg-loss-{train_mode}", avg_train_loss, epoch)
         print(f"\n[INFO] Epoch {epoch}, Epochal Avg - Training Loss: {avg_train_loss:.6f}")
 
     @torch.no_grad()
-    def benchmark_classifier(self):
+    def benchmark_classifier(self, mode='test'):
         """
         Evaluates Whole model including classifier on the test set
         """
@@ -200,7 +208,7 @@ class OneFoldTrainer:
         y_true = np.zeros(0)
         y_pred = np.zeros((0, self.cfg['classifier']['num_classes']))
 
-        for i, (inputs, labels) in enumerate(self.loader_dict['test']):
+        for i, (inputs, labels) in enumerate(self.loader_dict[mode]):
             loss = 0
             total += labels.size(0)
             inputs = inputs.to(self.device)
@@ -220,10 +228,15 @@ class OneFoldTrainer:
             y_true = np.concatenate([y_true, labels.cpu().numpy()])
             y_pred = np.concatenate([y_pred, outputs_sum.cpu().numpy()])
 
-            progress_bar(i, len(self.loader_dict['test']), 'Loss: %.3f | Acc: %.3f%% (%d/%d)'
+            progress_bar(i, len(self.loader_dict[mode]), 'Loss: %.3f | Acc: %.3f%% (%d/%d)'
                          % (eval_loss / (i + 1), 100. * correct / total, correct, total))
 
-        return y_true, y_pred
+        avg_eval_loss = eval_loss / len(self.loader_dict[mode])
+        print(f"[INFO] {mode.capitalize()} Eval-Loss: {avg_eval_loss:.4f}")
+        self.writer.add_scalar(f"{mode.capitalize()}/loss-avg-classifier", avg_eval_loss, self.train_iter)
+        # Compute additional metrics and log to TensorBoard for classifier
+        self.log_metrics_to_tensorboard(y_true, y_pred)
+        return eval_loss, y_true, y_pred
 
 
     @torch.no_grad()
@@ -232,7 +245,7 @@ class OneFoldTrainer:
         Runs the validation during model training on the val set.
         """
         self.model.eval()
-        eval_loss = 0
+        eval_loss, eval_mp_loss, eval_crl_loss = 0, 0, 0
 
         for i, (inputs, labels) in enumerate(self.loader_dict[mode]):
             # inputs loaded one view, construct val data for hybrid training here
@@ -254,8 +267,9 @@ class OneFoldTrainer:
                 reconstruction, _ = torch.split(outputs[0], [labels.size(0), labels.size(0)], dim=0)
                 _, latent_1 = torch.split(outputs[1], [labels.size(0), labels.size(0)], dim=0)
                 latent_outputs = latent_1.unsqueeze(1).repeat(1, 2, 1)
-                loss += self.criterion_mp(original_inputs, outputs=reconstruction, reduction='mean', mask=mask, labels=None)
-                loss += self.criterion_crl(None, outputs=latent_outputs, mask=None, labels=None)
+                mp_loss = self.criterion_mp(original_inputs, outputs=reconstruction, reduction='mean', mask=mask, labels=None)
+                crl_loss = self.criterion_crl(None, outputs=latent_outputs, mask=None, labels=None)
+                loss += mp_loss + self.alpha_crl * crl_loss
             else:
                 # for classification we only expect logit output
                 outputs = outputs[0]
@@ -263,14 +277,35 @@ class OneFoldTrainer:
 
             # calculate loss based on predictions, gt and whether a mask is given or not
             eval_loss += loss.item()
+            eval_mp_loss += mp_loss.item()
+            eval_crl_loss += crl_loss.item()
 
             progress_bar(i, len(self.loader_dict[mode]),
                          'Lr: %.4e | Loss: %.6f' % (get_lr(self.optimizer), eval_loss / (i + 1)))
 
         avg_eval_loss = eval_loss / len(self.loader_dict[mode])
+        avg_eval_mp_loss = eval_mp_loss / len(self.loader_dict[mode])
+        avg_eval_crl_loss = eval_crl_loss / len(self.loader_dict[mode])
         print(f"[INFO] {mode.capitalize()} Eval-Loss: {avg_eval_loss:.4f}")
-        self.writer.add_scalar(f"{mode.capitalize()}/loss-avg", avg_eval_loss, self.train_iter)
+        self.writer.add_scalar(f"{mode.capitalize()}/loss-avg-backbone", avg_eval_loss, self.train_iter)
+        self.writer.add_scalar(f"{mode.capitalize()}/loss-avg-mp", avg_eval_mp_loss, self.train_iter)
+        self.writer.add_scalar(f"{mode.capitalize()}/loss-avg-crl", avg_eval_crl_loss, self.train_iter)
         return eval_loss
+
+    def log_metrics_to_tensorboard(self, y_true, y_pred):
+        y_pred_argmax = np.argmax(y_pred, 1)
+        result_dict = skmet.classification_report(y_true, y_pred_argmax, digits=3, output_dict=True)
+
+        # Extract relevant metrics
+        accuracy = round(result_dict['accuracy']*100, 1)
+        macro_f1 = round(result_dict['macro avg']['f1-score']*100, 1)
+        kappa = round(skmet.cohen_kappa_score(y_true, y_pred_argmax), 3)
+
+        # Log to TensorBoard
+        self.writer.add_scalar(f"Metrics/Accuracy", accuracy, self.train_iter)
+        self.writer.add_scalar(f"Metrics/Macro_F1", macro_f1, self.train_iter)
+        self.writer.add_scalar(f"Metrics/Cohen_Kappa", kappa, self.train_iter)
+
 
     def generate_and_store_embeddings(self):
         self.model.eval()
@@ -345,7 +380,7 @@ def main():
     print("[INFO] Run classification benchmarks...")
     trainer.switch_mode('classification', set_masking=False)
     trainer.reload_best_model_weights()
-    y_pred, y_true = trainer.benchmark_classifier()
+    _, y_pred, y_true = trainer.benchmark_classifier()
     summarize_result(config, 1, y_pred, y_true)
 
 
@@ -440,7 +475,7 @@ def test(train_bb=False, gen_embed=False, train_classifier=False, benchmark_clas
         print("[INFO] Run classification benchmarks...")
         trainer.switch_mode('classification', set_masking=False)
         trainer.reload_best_model_weights()
-        y_pred, y_true = trainer.benchmark_classifier()
+        _, y_pred, y_true = trainer.benchmark_classifier()
         summarize_result(sample_cfg, 1, y_pred, y_true)
 
 
