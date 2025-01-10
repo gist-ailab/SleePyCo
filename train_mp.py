@@ -135,7 +135,7 @@ class OneFoldTrainer:
             mask = None
             if self.dset_masking_activated:
                 masked_input = inputs["masked_inputs"].to(self.device)
-                mask = inputs["mask"]
+                mask = inputs["mask"].to(self.device)
                 inputs = inputs["inputs"]
 
             inputs = inputs.to(self.device)
@@ -227,7 +227,7 @@ class OneFoldTrainer:
             mask = None
             if self.dset_masking_activated:
                 masked_input = inputs["masked_inputs"].to(self.device)
-                mask = inputs["mask"]
+                mask = inputs["mask"].to(self.device)
                 inputs = inputs["inputs"]
 
             inputs = inputs.to(self.device)
