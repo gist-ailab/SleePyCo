@@ -57,6 +57,7 @@ class OneFoldTrainer:
             **(self.tp_cfg['loss_params_mp'] if 'loss_params_mp' in self.tp_cfg.keys() else {}))
         self.criterion_crl = LOSS_MAP[self.tp_cfg['loss_crl']](
             **(self.tp_cfg['loss_params_crl'] if 'loss_params_crl' in self.tp_cfg.keys() else {}))
+        self.alpha_crl = float(self.tp_cfg['alpha_crl'])
 
         self.optimizer = optim.Adam(self.model.parameters(), lr=self.tp_cfg['lr'],
                                     weight_decay=self.tp_cfg['weight_decay'])
@@ -156,7 +157,7 @@ class OneFoldTrainer:
                 _, latent_1, latent_2 = torch.split(outputs[1], [labels.size(0), labels.size(0), labels.size(0)], dim=0)
                 latent_outputs = torch.cat([latent_1.unsqueeze(1), latent_2.unsqueeze(1)], dim=1)
                 loss += self.criterion_mp(original_inputs, outputs=reconstruction, reduction='mean', mask=mask, labels=None)
-                loss += self.criterion_crl(None, outputs=latent_outputs, mask=None, labels=None)
+                loss += self.criterion_crl(None, outputs=latent_outputs, mask=None, labels=None) * self.alpha_crl
             else:
                 # for classification we only expect logit output
                 outputs = outputs[0]

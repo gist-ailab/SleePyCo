@@ -1,5 +1,5 @@
 {
-    "_comment": "Pretraining Encoder backbone using MaskedPrediction. Run train_mp.py script with this config. Projection Head is not used with MP training that's why its omitted",
+    "_comment": "Pretraining Encoder backbone using MaskedPrediction. Run train_mp.py script with this config. Also train classifier, benchmark it and generate embeddings",
 
     "dataset": {
         "name": "Sleep-EDF-2018",
@@ -8,11 +8,12 @@
         "seq_len": 1,
         "target_idx": 0,
         "root_dir": "./",
-        "masking": false
+        "masking": true,
+        "masking_type": "fixed_proportion_random",
+        "masking_ratio": 0.25
     },
 
     "backbone": {
-        "_comment": "This model uses internal masking on the latent frames and not full signal restoration, also using internal loss calculation. Thats why mask params and loss params need to be defined here",
         "name": "Transformer",
         "fs": 100,
         "second": 30,

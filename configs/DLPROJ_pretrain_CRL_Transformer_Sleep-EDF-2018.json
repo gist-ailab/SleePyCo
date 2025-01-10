@@ -1,5 +1,5 @@
 {
-    "_comment": "Pretraining Encoder backbone using MaskedPrediction. Run train_mp.py script with this config. Projection Head is not used with MP training that's why its omitted",
+    "_comment": "Pretraining Encoder backbone using Contrastive Learning. Run train_crl_dlproj.py script with this config. Also train classifier, benchmark it and generate embeddings",
 
     "dataset": {
         "name": "Sleep-EDF-2018",
@@ -12,7 +12,6 @@
     },
 
     "backbone": {
-        "_comment": "This model uses internal masking on the latent frames and not full signal restoration, also using internal loss calculation. Thats why mask params and loss params need to be defined here",
         "name": "Transformer",
         "fs": 100,
         "second": 30,
@@ -32,7 +31,7 @@
     },
 
     "classifier": {
-        "_comment": "Classifier used to finetune it and benmchmark -> linear Evaluation",
+        "_comment": "Classifier used to finetune it and benchmark -> linear Evaluation",
         "name": "DLProjMLP",
         "input_dim": 128,
         "hidden_dim": 256,
@@ -41,7 +40,6 @@
     },
 
     "training_params": {
-        "_comment": "All default sleepyco settings despite 'mode'. 'pretrain_mp' is passed to dataloader to use the base EEG epochs, not two-view as in 'pretrain'",
         "mode": "pretrain",
         "loss": "NTXent",
         "max_epochs": 500,

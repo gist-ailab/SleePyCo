@@ -1,5 +1,5 @@
 {
-    "_comment": "Pretraining Encoder backbone using MaskedPrediction. Run train_mp.py script with this config. Projection Head is not used with MP training that's why its omitted",
+    "_comment": "Pretraining Encoder backbone using MaskedPrediction. Run train_mp.py script with this config. Also train classifier, benchmark it and generate embeddings",
 
     "dataset": {
         "name": "Sleep-EDF-2018",
@@ -14,13 +14,13 @@
     },
 
     "backbone": {
-        "_comment": "Does not use internal masking thus we have masking activated in the dataloader",
+        "_comment": "Architectural Settings are hardcoded and not configured here in cfg",
         "name": "Cnn+Attention",
         "init_weights": false
     },
 
     "classifier": {
-        "_comment": "Classifier used to finetune it and benmchmark -> linear Evaluation",
+        "_comment": "Classifier used to finetune it and benchmark -> linear Evaluation",
         "name": "DLProjMLP",
         "input_dim": 128,
         "hidden_dim": 256,

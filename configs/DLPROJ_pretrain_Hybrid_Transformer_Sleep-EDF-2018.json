@@ -1,5 +1,5 @@
 {
-    "_comment": "Pretraining Encoder backbone using MaskedPrediction AND CRL. Run train_hybrid.py script with this config.",
+    "_comment": "Pretraining Encoder backbone using MaskedPrediction AND CRL. Run train_hybrid.py script with this config. Also train classifier, benchmark it and generate embeddings",
 
     "dataset": {
         "name": "Sleep-EDF-2018",
@@ -14,7 +14,6 @@
     },
 
     "backbone": {
-        "_comment": "This model uses internal masking on the latent frames and not full signal restoration, also using internal loss calculation. Thats why mask params and loss params need to be defined here",
         "name": "Transformer",
         "fs": 100,
         "second": 30,
@@ -46,6 +45,7 @@
         "mode": "pretrain-hybrid",
         "loss_crl": "NTXent",
         "loss_mp": "l2",
+        "alpha_crl": 1,
         "max_epochs": 500,
         "batch_size": 128,
         "lr": 0.0005,
