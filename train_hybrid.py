@@ -236,11 +236,12 @@ class OneFoldTrainer:
         self.writer.add_scalar(f"{mode.capitalize()}/loss-avg-classifier", avg_eval_loss, self.train_iter)
         # Compute additional metrics and log to TensorBoard for classifier
         self.log_metrics_to_tensorboard(y_true, y_pred)
+        self.writer.flush()
         return eval_loss, y_true, y_pred
 
 
     @torch.no_grad()
-    def evaluate(self, mode, classifier=False):
+    def evaluate(self, mode):
         """
         Runs the validation during model training on the val set.
         """
@@ -252,28 +253,22 @@ class OneFoldTrainer:
 
             loss = 0
             labels = labels.view(-1).to(self.device)
-
-            if not classifier:
-                masked_inp_dict = inputs
-                masked_input = masked_inp_dict["masked_inputs"].to(self.device)
-                mask = masked_inp_dict["mask"].to(self.device)
-                original_inputs = masked_inp_dict["inputs"].to(self.device)
-                inputs = torch.cat([masked_input, original_inputs], dim=0)
+            # Prepare Inputs
+            masked_inp_dict = inputs
+            masked_input = masked_inp_dict["masked_inputs"].to(self.device)
+            mask = masked_inp_dict["mask"].to(self.device)
+            original_inputs = masked_inp_dict["inputs"].to(self.device)
+            inputs = torch.cat([masked_input, original_inputs], dim=0)
 
             inputs = inputs.to(self.device)
             outputs = self.model(inputs) # list of outputs
-
-            if not classifier:
-                reconstruction, _ = torch.split(outputs[0], [labels.size(0), labels.size(0)], dim=0)
-                _, latent_1 = torch.split(outputs[1], [labels.size(0), labels.size(0)], dim=0)
-                latent_outputs = latent_1.unsqueeze(1).repeat(1, 2, 1)
-                mp_loss = self.criterion_mp(original_inputs, outputs=reconstruction, reduction='mean', mask=mask, labels=None)
-                crl_loss = self.criterion_crl(None, outputs=latent_outputs, mask=None, labels=None)
-                loss += mp_loss + self.alpha_crl * crl_loss
-            else:
-                # for classification we only expect logit output
-                outputs = outputs[0]
-                loss += self.criterion_classifier(inputs, outputs, reduction='mean', mask=None, labels=labels)
+            # Unpack outputs and calculate loss
+            reconstruction, _ = torch.split(outputs[0], [labels.size(0), labels.size(0)], dim=0)
+            _, latent_1 = torch.split(outputs[1], [labels.size(0), labels.size(0)], dim=0)
+            latent_outputs = latent_1.unsqueeze(1).repeat(1, 2, 1)
+            mp_loss = self.criterion_mp(original_inputs, outputs=reconstruction, reduction='mean', mask=mask, labels=None)
+            crl_loss = self.criterion_crl(None, outputs=latent_outputs, mask=None, labels=None)
+            loss += mp_loss + self.alpha_crl * crl_loss
 
             # calculate loss based on predictions, gt and whether a mask is given or not
             eval_loss += loss.item()
@@ -324,6 +319,7 @@ class OneFoldTrainer:
         for epoch in range(self.tp_cfg['classifier_epochs']):
             print('\n[INFO] ClassifierTrain, Epoch: {}'.format(epoch))
             self.train_one_epoch(epoch, classifier=True)
+            self.writer.flush()
             if self.early_stopping.early_stop:
                 break
 
@@ -332,10 +328,9 @@ class OneFoldTrainer:
         for epoch in range(self.tp_cfg['max_epochs']):
             print('\n[INFO] Fold: {}, Epoch: {}'.format(self.fold, epoch))
             self.train_one_epoch(epoch)
+            self.writer.flush()
             if self.early_stopping.early_stop:
                 break
-        # close tensorboard-writer
-        self.writer.close()
 
 
 def main():
@@ -382,6 +377,8 @@ def main():
     trainer.reload_best_model_weights()
     _, y_pred, y_true = trainer.benchmark_classifier()
     summarize_result(config, 1, y_pred, y_true)
+    # close tensorboard-writer
+    trainer.writer.close()
 
 
 def test(train_bb=False, gen_embed=False, train_classifier=False, benchmark_classifier=False):
@@ -438,6 +435,7 @@ def test(train_bb=False, gen_embed=False, train_classifier=False, benchmark_clas
             "mode": "pretrain-hybrid",
             "loss_crl": "NTXent",
             "loss_mp": "l2",
+            "alpha_crl": 0,
             "max_epochs": 2,
             "batch_size": 16,
             "lr": 0.0005,
@@ -481,5 +479,5 @@ def test(train_bb=False, gen_embed=False, train_classifier=False, benchmark_clas
 
 if __name__ == "__main__":
     # Uncomment test for testing
-    #test(train_bb=False, gen_embed=False, train_classifier=False, benchmark_classifier=True)
-    main()
+    test(train_bb=False, gen_embed=False, train_classifier=False, benchmark_classifier=True)
+    #main()

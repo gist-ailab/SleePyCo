@@ -71,7 +71,7 @@ class OneFoldTrainer:
         # save initialized weights for case of testing
         self.early_stopping.save_checkpoint(-np.inf, self.model)
 
-    def switch_mode(self, mode, set_masking=False):
+    def switch_mode(self, mode):
         self.model.module.switch_mode(mode)
         self.model.to(self.device)
         self.cfg['training_params']['mode'] = mode
@@ -217,11 +217,12 @@ class OneFoldTrainer:
         self.writer.add_scalar(f"{mode.capitalize()}/loss-avg-classifier", avg_eval_loss, self.train_iter)
         # Compute additional metrics and log to TensorBoard for classifier
         self.log_metrics_to_tensorboard(y_true, y_pred)
+        self.writer.flush()
         return eval_loss, y_true, y_pred
 
 
     @torch.no_grad()
-    def evaluate(self, mode, classifier=False):
+    def evaluate(self, mode):
         """
         Runs the validation during model training on the val set.
         """
@@ -232,16 +233,12 @@ class OneFoldTrainer:
             # input-shape:(B, 1, 3000), labels.shape: (B,) -> dummy dim is removed in models that don't need it.
 
             loss = 0
-
             inputs = inputs.to(self.device)
-            labels = labels.view(-1).to(self.device)
-
             outputs = self.model(inputs)[0]
 
             # calculate loss based on predictions, gt and whether a mask is given or not
-            if not classifier:
-                outputs = outputs.unsqueeze(1).repeat(1, 2, 1)
-            loss += self.criterion(inputs, outputs=outputs, reduction='mean', mask=None, labels=labels if classifier else None)  # We assume using the NTXent
+            outputs = outputs.unsqueeze(1).repeat(1, 2, 1)
+            loss += self.criterion(inputs, outputs=outputs, reduction='mean', mask=None, labels=None)  # We assume using the NTXent
 
             eval_loss += loss.item()
 
@@ -284,6 +281,7 @@ class OneFoldTrainer:
         for epoch in range(self.tp_cfg['classifier_epochs']):
             print('\n[INFO] ClassifierTrain, Epoch: {}'.format(epoch))
             self.train_one_epoch(epoch, classifier=True)
+            self.writer.flush()
             if self.early_stopping.early_stop:
                 break
 
@@ -292,10 +290,9 @@ class OneFoldTrainer:
         for epoch in range(self.tp_cfg['max_epochs']):
             print('\n[INFO] Fold: {}, Epoch: {}'.format(self.fold, epoch))
             self.train_one_epoch(epoch)
+            self.writer.flush()
             if self.early_stopping.early_stop:
                 break
-        # close tensorboard-writer
-        self.writer.close()
 
 
 def main():
@@ -327,21 +324,23 @@ def main():
 
     # Generate embeddings for later benchmark of latent space - store to
     print("[INFO] Generate and store embeddings...")
-    trainer.switch_mode('gen-embeddings', set_masking=False)
+    trainer.switch_mode('gen-embeddings')
     trainer.reload_best_model_weights()
     trainer.generate_and_store_embeddings()
 
     #  Train classifier with frozen backbone
     print("[INFO] Training the classifier...")
-    trainer.switch_mode('train-classifier', set_masking=False)
+    trainer.switch_mode('train-classifier')
     trainer.train_classifier()
 
     # Perform classification
     print("[INFO] Run classification benchmarks...")
-    trainer.switch_mode('classification', set_masking=False)
+    trainer.switch_mode('classification')
     trainer.reload_best_model_weights()
     _, y_pred, y_true = trainer.benchmark_classifier()
     summarize_result(config, 1, y_pred, y_true)
+    # close tensorboard logger
+    trainer.writer.close()
 
 
 def test(train_bb=False, gen_embed=False, train_classifier=False, benchmark_classifier=False):
@@ -421,18 +420,18 @@ def test(train_bb=False, gen_embed=False, train_classifier=False, benchmark_clas
         trainer.run()
     if gen_embed:
         print("[INFO] Generate and store embeddings...")
-        trainer.switch_mode('gen-embeddings', set_masking=False)
+        trainer.switch_mode('gen-embeddings')
         trainer.reload_best_model_weights()
         trainer.generate_and_store_embeddings()
     if train_classifier:
         #  Train classifier with frozen backbone
         print("[INFO] Training the classifier...")
-        trainer.switch_mode('train-classifier', set_masking=False)
+        trainer.switch_mode('train-classifier')
         trainer.train_classifier()
     if benchmark_classifier:
         # Perform classification
         print("[INFO] Run classification benchmarks...")
-        trainer.switch_mode('classification', set_masking=False)
+        trainer.switch_mode('classification')
         trainer.reload_best_model_weights()
         _, y_pred, y_true = trainer.benchmark_classifier()
         summarize_result(sample_cfg, 1, y_pred, y_true)
@@ -440,5 +439,5 @@ def test(train_bb=False, gen_embed=False, train_classifier=False, benchmark_clas
 
 if __name__ == "__main__":
     # Uncomment test for testing
-    # test(train_bb=False, gen_embed=False, train_classifier=False, benchmark_classifier=False)
+    #test(train_bb=False, gen_embed=False, train_classifier=False, benchmark_classifier=True)
     main()

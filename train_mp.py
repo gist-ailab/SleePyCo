@@ -217,6 +217,7 @@ class OneFoldTrainer:
         self.writer.add_scalar(f"{mode.capitalize()}/loss-avg-classifier", avg_eval_loss, self.train_iter)
         # Compute additional metrics and log to TensorBoard for classifier
         self.log_metrics_to_tensorboard(y_true, y_pred)
+        self.writer.flush()
         return eval_loss, y_true, y_pred
 
 
@@ -290,6 +291,7 @@ class OneFoldTrainer:
         for epoch in range(self.tp_cfg['classifier_epochs']):
             print('\n[INFO] ClassifierTrain, Epoch: {}'.format(epoch))
             self.train_one_epoch(epoch)
+            self.writer.flush()
             if self.early_stopping.early_stop:
                 break
 
@@ -298,10 +300,9 @@ class OneFoldTrainer:
         for epoch in range(self.tp_cfg['max_epochs']):
             print('\n[INFO] Fold: {}, Epoch: {}'.format(self.fold, epoch))
             self.train_one_epoch(epoch)
+            self.writer.flush()
             if self.early_stopping.early_stop:
                 break
-        # close tensorboard-writer
-        self.writer.close()
 
 
 def main():
@@ -348,6 +349,8 @@ def main():
     trainer.reload_best_model_weights()
     _, y_pred, y_true = trainer.evaluate_classifier()
     summarize_result(config, 1, y_pred, y_true)
+    # close tensorboard-writer
+    trainer.writer.close()
 
 
 def test(train_bb=False, gen_embed=False, train_classifier=False, benchmark_classifier=False):
@@ -446,5 +449,5 @@ def test(train_bb=False, gen_embed=False, train_classifier=False, benchmark_clas
 
 if __name__ == "__main__":
     # Uncomment test for testing
-    #test(train_bb=False, gen_embed=False, train_classifier=False, benchmark_classifier=False)
+    #test(train_bb=False, gen_embed=False, train_classifier=False, benchmark_classifier=True)
     main()
