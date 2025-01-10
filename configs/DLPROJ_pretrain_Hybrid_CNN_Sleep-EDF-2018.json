@@ -8,7 +8,9 @@
         "seq_len": 1,
         "target_idx": 0,
         "root_dir": "./",
-        "masking": false
+        "masking": true,
+        "masking_type": "fixed_proportion_random",
+        "masking_ratio": 0.25
     },
 
     "backbone": {

@@ -10,7 +10,7 @@
         "root_dir": "./",
         "masking": true,
         "masking_type": "fixed_proportion_random",
-        "masking_ratio": 0.75
+        "masking_ratio": 0.25
     },
 
     "backbone": {
