@@ -137,6 +137,7 @@ datasets/
 *.zip
 *.pdf
 results/
+logs/
 
 # Mac and IntelliJ
 .idea/
