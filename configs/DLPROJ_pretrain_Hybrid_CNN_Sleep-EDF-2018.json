@@ -33,7 +33,7 @@
         "loss_crl": "NTXent",
         "loss_mp": "l2",
         "alpha_crl": 1,
-        "max_epochs": 1,
+        "max_epochs": 500,
         "batch_size": 128,
         "lr": 0.001,
         "weight_decay": 0.0001,
@@ -44,6 +44,6 @@
             "patience": 10,
             "_comment": "validation is done at each epoch, we wait for max 10 validations(=10 epochs)"
         },
-        "classifier_epochs": 1
+        "classifier_epochs": 100
     }
 }
