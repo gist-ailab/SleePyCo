@@ -51,12 +51,12 @@ class EEGDataLoader(Dataset):
         if self.training_mode in ['pretrain', 'pretrain-hybrid']:
             self.transform = Compose(
                 transforms=[
-                    RandomAmplitudeScale(),
-                    RandomTimeShift(),
-                    RandomDCShift(),
-                    RandomZeroMasking(),
-                    RandomAdditiveGaussianNoise(),
                     RandomBandStopFilter(),
+                    RandomTimeShift(),
+                    TimeWarping(),
+                    Permutation(),
+                    RandomZeroMasking(),
+                    CutoutResize(),
                 ]
             )
             self.two_transform = TwoTransform(self.transform)
