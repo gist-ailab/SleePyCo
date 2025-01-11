@@ -51,11 +51,11 @@
         "lr": 0.0005,
         "weight_decay": 0.0001,
         "temperature": 0.07,
-        "val_period": 649,
+        "val_period": 325,
         "early_stopping": {
             "mode": "min",
-            "patience": 4,
-            "_comment": "as validation is done at half an epoch, we max wait 4 validations(=2epochs)"
+            "patience": 8,
+            "_comment": "as validation is done at quarter an epoch, we max wait 8 validations(=2epochs)"
         },
         "classifier_epochs": 100
     }

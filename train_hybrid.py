@@ -84,6 +84,9 @@ class OneFoldTrainer:
         self.dset_masking_activated = ("masking" in self.dset_cfg.keys() and self.dset_cfg["masking"])
         # reinitialize datasets/loaders for new mode
         self.loader_dict = self.build_dataloader()
+        # reset early stopping
+        self.early_stopping = EarlyStopping(patience=self.es_cfg['patience'], verbose=True, ckpt_path=self.ckpt_path,
+                                            ckpt_name=self.ckpt_name, mode=self.es_cfg['mode'])
         # change criterion to classification loss if training classifier
         if mode == 'train-classifier':
             print('[INFO] Training classifier... thus setting criterion to be CrossEntropy]')
