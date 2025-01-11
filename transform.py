@@ -150,3 +150,85 @@ class RandomBandStopFilter:
 
     def __repr__(self):
         return self.__class__.__name__ + '()'
+
+class TimeWarping:
+
+    def __init__(self, n_segments=4, scale_range=(0.5, 2.0), p=0.5):
+        self.n_segments = n_segments
+        self.scale_range = scale_range
+        self.p = p
+
+    def __call__(self, x):
+        if torch.rand(1) < self.p:
+            L = x.shape[-1]
+            segment_length = L // self.n_segments
+            segments = []
+            for i in range(self.n_segments):
+                start = i * segment_length
+                end = start + segment_length if i < self.n_segments - 1 else L
+                Si = x[..., start:end]
+                omega = random.uniform(self.scale_range[0], self.scale_range[1])
+                new_length = max(1, int(Si.shape[-1] * omega))
+                Si_transformed = signal.resample(Si, new_length, axis=-1)
+                segments.append(Si_transformed)
+            x_aug = np.concatenate(segments, axis=-1)
+            x_aug = signal.resample(x_aug, L, axis=-1)
+            return x_aug
+        return x
+
+    def __repr__(self):
+        return f"{self.__class__.__name__}(n_segments={self.n_segments}, scale_range={self.scale_range}, p={self.p})"
+
+
+class Permutation:
+
+    def __init__(self, n_segments=4, p=0.5):
+        self.n_segments = n_segments
+        self.p = p
+
+    def __call__(self, x):
+        if torch.rand(1) < self.p:
+            L = x.shape[-1]
+            segment_length = L // self.n_segments
+            segments = []
+            indices = list(range(self.n_segments))
+            for i in indices:
+                start = i * segment_length
+                end = start + segment_length if i < self.n_segments - 1 else L
+                Si = x[..., start:end]
+                segments.append(Si)
+            random.shuffle(indices)
+            shuffled_segments = [segments[i] for i in indices]
+            x_aug = np.concatenate(shuffled_segments, axis=-1)
+            return x_aug
+        return x
+
+    def __repr__(self):
+        return f"{self.__class__.__name__}(n_segments={self.n_segments}, p={self.p})"
+
+
+class CutoutResize:
+
+    def __init__(self, n_segments=4, p=0.5):
+        self.n_segments = n_segments
+        self.p = p
+
+    def __call__(self, x):
+        if torch.rand(1) < self.p:
+            L = x.shape[-1]
+            segment_length = L // self.n_segments
+            segments = []
+            for i in range(self.n_segments):
+                start = i * segment_length
+                end = start + segment_length if i < self.n_segments - 1 else L
+                Si = x[..., start:end]
+                segments.append(Si)
+            r = random.randint(0, self.n_segments - 1)
+            del segments[r]
+            x_aug = np.concatenate(segments, axis=-1)
+            x_aug = signal.resample(x_aug, L, axis=-1)
+            return x_aug
+        return x
+
+    def __repr__(self):
+        return f"{self.__class__.__name__}(n_segments={self.n_segments}, p={self.p})"

@@ -241,6 +241,33 @@ class Transformer(nn.Module):
         return out
 
 
+class DLProjMLP(nn.Module):
+    def __init__(self, config):
+        super(DLProjMLP, self).__init__()
+        self.cfg = config['classifier']
+        self.num_classes = self.cfg['num_classes']
+        self.input_dim = self.cfg['input_dim']
+        self.hidden_dim = self.cfg['hidden_dim']
+        self.dropout = self.cfg['dropout']
+
+        # architecture
+        self.mlp = nn.Sequential(
+            nn.Linear(self.input_dim, self.hidden_dim),
+            nn.BatchNorm1d(self.hidden_dim),
+            nn.ReLU(),
+            nn.Dropout(self.dropout),
+            nn.Linear(self.hidden_dim, self.hidden_dim),
+            nn.BatchNorm1d(self.hidden_dim),
+            nn.ReLU(),
+            nn.Dropout(self.dropout),
+            nn.Linear(self.hidden_dim, self.num_classes)
+        )
+
+    def forward(self, x):
+        output = self.mlp(x)
+        return output
+
+
 def get_classifier(config):
     classifier_name = config['classifier']['name']
     
@@ -264,5 +291,8 @@ def get_classifier(config):
 
     elif classifier_name == 'Transformer':
         classifier = Transformer(config, nheads=8, num_encoder_layers=6, pool=config['classifier']['pool'])
+
+    elif classifier_name == 'DLProjMLP':
+        classifier = DLProjMLP(config)
     
     return classifier

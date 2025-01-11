@@ -1,7 +1,6 @@
 name: sleepnet
 channels:
   - pytorch
-  - nvidia
   - conda-forge
   - defaults
 dependencies:
@@ -20,7 +19,6 @@ dependencies:
   - pytorch
   - torchvision
   - torchaudio
-  - pytorch-cuda=12.1
   - umap-learn
   - pyedflib
   - pynndescent

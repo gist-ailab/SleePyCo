@@ -1,0 +1,49 @@
+{
+    "_comment": "Pretraining Encoder backbone using MaskedPrediction AND CRL. Run train_hybrid.py script with this config. Also train classifier, benchmark it and generate embeddings",
+
+    "dataset": {
+        "name": "Sleep-EDF-2018",
+        "eeg_channel": "Fpz-Cz",
+        "num_splits": 10,
+        "seq_len": 1,
+        "target_idx": 0,
+        "root_dir": "./",
+        "masking": true,
+        "masking_type": "fixed_proportion_random",
+        "masking_ratio": 0.25
+    },
+
+    "backbone": {
+        "_comment": "Architectural Settings are hardcoded and not configured here in cfg",
+        "name": "CnnOnly",
+        "init_weights": false
+    },
+
+    "classifier": {
+        "_comment": "Classifier used to finetune it and benchmark -> linear Evaluation",
+        "name": "DLProjMLP",
+        "input_dim": 128,
+        "hidden_dim": 256,
+        "dropout": 0.5,
+        "num_classes": 5
+    },
+
+    "training_params": {
+        "mode": "pretrain-hybrid",
+        "loss_crl": "NTXent",
+        "loss_mp": "l2",
+        "alpha_crl": 1,
+        "max_epochs": 500,
+        "batch_size": 128,
+        "lr": 0.0005,
+        "weight_decay": 0.0001,
+        "temperature": 0.07,
+        "val_period": 325,
+        "early_stopping": {
+            "mode": "min",
+            "patience": 8,
+            "_comment": "as validation is done at quarter an epoch, we max wait 8 validations(=2epochs)"
+        },
+        "classifier_epochs": 100
+    }
+}

@@ -89,7 +89,7 @@ class MainModel(nn.Module):
 
     def forward(self, x):
         outputs = []
-        features = self.feature(x)
+        features = self.feature(x)  # Features: a list of one or more latent outputs of encoders (>1 if feature pyramid)
         
         for feature in features:
             if self.bb_cfg['dropout']:

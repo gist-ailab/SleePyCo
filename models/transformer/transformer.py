@@ -1,16 +1,16 @@
 # -*- coding:utf-8 -*-
 import torch
-import numpy as np
 import torch.nn as nn
-from typing import List
 from timm.models.vision_transformer import Block
-from .transformer_util import get_2d_sincos_pos_embed_flexible
+from models.transformer.transformer_util import get_2d_sincos_pos_embed_flexible
 from functools import partial
+
+
 
 class AutoEncoderViT(nn.Module):
     def __init__(self, input_size: int, num_patches: int,
                  encoder_embed_dim: int, encoder_heads: int, encoder_depths: int,
-                 decoder_embed_dim: int, decoder_heads: int, decoder_depths: int, initialize_weights=True):
+                 decoder_embed_dim: int, decoder_heads: int, decoder_depths: int, initialize_weights=True, use_cls=True):
         super().__init__()
         self.patch_embed = nn.Linear(input_size, encoder_embed_dim)
         self.cls_token = nn.Parameter(torch.zeros(1, 1, encoder_embed_dim))
@@ -43,6 +43,7 @@ class AutoEncoderViT(nn.Module):
         ])
         self.decoder_norm = nn.LayerNorm(decoder_embed_dim, eps=1e-6)
         self.decoder_pred = nn.Linear(decoder_embed_dim, input_size, bias=True)
+        self.use_cls = use_cls
         if initialize_weights:
             self.initialize_weights()
 
@@ -53,16 +54,19 @@ class AutoEncoderViT(nn.Module):
 
     def forward_encoder(self, x: torch.Tensor):
         # embed patches
+        #print(f"x shape {x.shape}")
         x = self.patch_embed(x)
 
         # add pos embed w/o cls token
         x = x + self.pos_embed[:, 1:, :]
 
         # append cls token
-        cls_token = self.cls_token + self.pos_embed[:, :1, :]
-        cls_tokens = cls_token.expand(x.shape[0], -1, -1)
-        x = torch.cat((cls_tokens, x), dim=1)
+        if self.use_cls:
+            cls_token = self.cls_token + self.pos_embed[:, :1, :]
+            cls_tokens = cls_token.expand(x.shape[0], -1, -1)
+            x = torch.cat((cls_tokens, x), dim=1)
 
+        #print(f"x shape {x.shape}")
         # apply Transformer blocks
         for block in self.encoder_block:
             x = block(x)
@@ -72,7 +76,9 @@ class AutoEncoderViT(nn.Module):
 
     def forward_decoder(self, x):
         # embed tokens
-        x = self.decoder_embed(x[:, 1:, :])
+        if self.use_cls:
+            x = x[:, 1:, :]
+        x = self.decoder_embed(x)
 
         # add pos embed
         x = x + self.decoder_pos_embed
@@ -115,59 +121,3 @@ class AutoEncoderViT(nn.Module):
         elif isinstance(m, nn.LayerNorm):
             nn.init.constant_(m.bias, 0)
             nn.init.constant_(m.weight, 1.0)
-
-
-class EncoderWrapper(nn.Module):
-    def __init__(self, fs: int, second: int, time_window: int, time_step: float,
-                 frame_backbone, patch_embed, encoder_block, encoder_norm, cls_token, pos_embed,
-                 final_length):
-
-        super().__init__()
-        self.fs, self.second = fs, second
-        self.time_window = time_window
-        self.time_step = time_step
-
-        self.patch_embed = patch_embed
-        self.frame_backbone = frame_backbone
-        self.encoder_block = encoder_block
-        self.encoder_norm = encoder_norm
-        self.cls_token = cls_token
-        self.pos_embed = pos_embed
-
-        self.final_length = final_length
-
-    def forward(self, x):
-        # frame backbone
-        x = self.make_frame(x)
-        x = self.frame_backbone(x)
-
-        # embed patches
-        x = self.patch_embed(x)
-
-        # add pos embed w/o cls token
-        x = x + self.pos_embed[:, 1:, :]
-
-        # append cls token
-        cls_token = self.cls_token + self.pos_embed[:, :1, :]
-        cls_tokens = cls_token.expand(x.shape[0], -1, -1)
-        x = torch.cat((cls_tokens, x), dim=1)
-
-        # apply Transformer blocks
-        for block in self.encoder_block:
-            x = block(x)
-
-        x = self.encoder_norm(x)
-        return x
-
-    def make_frame(self, x):
-        size = self.fs * self.second
-        step = int(self.time_step * self.fs)
-        window = int(self.time_window * self.fs)
-        frame = []
-        for i in range(0, size, step):
-            start_idx, end_idx = i, i+window
-            sample = x[..., start_idx: end_idx]
-            if sample.shape[-1] == window:
-                frame.append(sample)
-        frame = torch.stack(frame, dim=1)
-        return frame
