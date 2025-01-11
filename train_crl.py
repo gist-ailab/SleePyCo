@@ -178,10 +178,6 @@ class OneFoldTrainer:
             if self.early_stopping.early_stop:
                 break
 
-        # Close TensorBoard writer at the end
-        self.writer.close()
-
-
 def main():
     warnings.filterwarnings("ignore", category=DeprecationWarning) 
     warnings.filterwarnings("ignore", category=UserWarning) 
