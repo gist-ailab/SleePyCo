@@ -75,6 +75,8 @@ class OneFoldTrainer:
         self.dset_cfg['masking'] = set_masking
         self.cfg['dataset']['masking'] = set_masking
         self.dset_masking_activated = ("masking" in self.dset_cfg.keys() and self.dset_cfg["masking"])
+        self.early_stopping = EarlyStopping(patience=self.es_cfg['patience'], verbose=True, ckpt_path=self.ckpt_path,
+                                            ckpt_name=self.ckpt_name, mode=self.es_cfg['mode'])
         # reinitialize datasets/loaders for new mode
         self.loader_dict = self.build_dataloader()
         # change criterion to classification loss if training classifier
@@ -407,7 +409,7 @@ def test(train_bb=False, gen_embed=False, train_classifier=False, benchmark_clas
             "mode": "pretrain_mp",
             "loss": "l2",
             "max_epochs": 2,
-            "batch_size": 16,
+            "batch_size": 128,
             "lr": 0.0005,
             "weight_decay": 0.0001,
             "temperature": 0.07,
@@ -417,7 +419,7 @@ def test(train_bb=False, gen_embed=False, train_classifier=False, benchmark_clas
                 "patience": 4,
                 "_comment": "as validation is done at half an epoch, we max wait 4 validations(=2epochs)"
             },
-            "classifier_epochs": 1
+            "classifier_epochs": 2
         }
     }
     class Args:
@@ -449,5 +451,5 @@ def test(train_bb=False, gen_embed=False, train_classifier=False, benchmark_clas
 
 if __name__ == "__main__":
     # Uncomment test for testing
-    #test(train_bb=False, gen_embed=False, train_classifier=False, benchmark_classifier=True)
+    #test(train_bb=False, gen_embed=False, train_classifier=True, benchmark_classifier=False)
     main()
