@@ -1,5 +1,5 @@
 {
-    "_comment": "Pretraining Encoder backbone using MaskedPrediction. Run train_mp.py script with this config. Also train classifier, benchmark it and generate embeddings",
+    "_comment": "Pretraining Encoder backbone using MaskedPrediction AND CRL. Run train_hybrid.py script with this config. Also train classifier, benchmark it and generate embeddings",
 
     "dataset": {
         "name": "Sleep-EDF-2018",
@@ -15,7 +15,7 @@
 
     "backbone": {
         "_comment": "Architectural Settings are hardcoded and not configured here in cfg",
-        "name": "CnnOnly",
+        "name": "Cnn+Attention",
         "init_weights": false
     },
 
@@ -29,9 +29,10 @@
     },
 
     "training_params": {
-        "_comment": "All default sleepyco settings despite 'mode'. 'pretrain-mp' is passed to dataloader to use the base EEG epochs, not two-view as in 'pretrain'",
-        "mode": "pretrain_mp",
-        "loss": "l2",
+        "mode": "pretrain-hybrid",
+        "loss_crl": "NTXent",
+        "loss_mp": "l2",
+        "alpha_crl": 1,
         "max_epochs": 500,
         "batch_size": 128,
         "lr": 0.0005,

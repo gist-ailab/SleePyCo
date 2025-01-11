@@ -12,7 +12,7 @@ Transformer backbone Model: Model adapted from Neuronet (https://github.com/dlcj
 """
 class TransformerBackbone(BaseModel):
 
-    SUPPORTED_MODES = ["pretrain_mp", "pretrain", "train-classifier", "classification", "gen-embeddings"]  # support Contrastive Learning and Masked Prediction
+    SUPPORTED_MODES = ["pretrain-hybrid", "pretrain_mp", "pretrain", "train-classifier", "classification", "gen-embeddings"]  # support Contrastive Learning and Masked Prediction
 
 
     def __init__(self, mode: str, conf: dict):
@@ -72,6 +72,8 @@ class TransformerBackbone(BaseModel):
         # print(f"latent shape {latent.shape}")
         if self.mode == 'pretrain_mp':
             return pred # pred output is (50, 1, 3000)
+        elif self.mode == 'pretrain-hybrid':
+            return [pred, latent[:, :1, :].squeeze(1)]
         else:
             return latent[:, :1, :].squeeze(1) # remove dummy dimension
 

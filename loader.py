@@ -11,7 +11,8 @@ class EEGDataLoader(Dataset):
     Dataloader to load single channel EEG signals. It can operate in different training modi:
         1. pretrain: from one eeg epoch, generate two views using augmentations
         2. others: ('scratch', 'fullyfinetune', 'freezefinetune') - only load single channel EEG signals, no two views
-        3. pretrain_mp: use this one for semantic clearness when doing pretraining with masked prediction. Here we only use single channel EEG signals as in "other" TODO: potentially adding masking here
+        3. pretrain_mp: use this when doing pretraining with masked prediction. Here we only use single channel EEG signals as in "other"
+        4. pretrain-hybrid: use masked prediction and crl. Thus return masked inputs as well as augmented pairs for crl
     """
 
     def __init__(self, config, fold, set='train'):
@@ -47,15 +48,15 @@ class EEGDataLoader(Dataset):
             self.masking_ratio = self.dset_cfg["masking_ratio"]
 
         # Setup two-transform in case of contrastive learning
-        if self.training_mode == 'pretrain':
+        if self.training_mode in ['pretrain', 'pretrain-hybrid']:
             self.transform = Compose(
                 transforms=[
-                    RandomAmplitudeScale(),
-                    RandomTimeShift(),
-                    RandomDCShift(),
-                    RandomZeroMasking(),
-                    RandomAdditiveGaussianNoise(),
                     RandomBandStopFilter(),
+                    RandomTimeShift(),
+                    TimeWarping(),
+                    Permutation(),
+                    RandomZeroMasking(),
+                    CutoutResize(),
                 ]
             )
             self.two_transform = TwoTransform(self.transform)
@@ -75,6 +76,16 @@ class EEGDataLoader(Dataset):
                 input_a = torch.from_numpy(input_a).float()
                 input_b = torch.from_numpy(input_b).float()
                 inputs = [input_a, input_b]
+            elif self.training_mode == 'pretrain-hybrid':
+                # in case of hybrid training do return original and augmented
+                # CRL loading
+                input_a, input_b = self.two_transform(inputs)
+                input_a = torch.from_numpy(input_a).float()
+                input_b = torch.from_numpy(input_b).float()
+                # MP loading
+                inputs = inputs.reshape(1, n_sample)
+                inputs = torch.from_numpy(inputs).float()
+                inputs = [inputs, input_a, input_b]
             else:
                 inputs = inputs.reshape(1, n_sample)
                 inputs = torch.from_numpy(inputs).float()
@@ -88,8 +99,18 @@ class EEGDataLoader(Dataset):
         labels = labels[self.target_idx]
 
         if self.masking_activated:
-            inputs, masked_inputs, mask = self.masking_method(inputs, self.masking_ratio)
-            return {'inputs': inputs, 'masked_inputs': masked_inputs, 'mask': mask}, labels
+            # we assume that masking is set to false manually during classifier benchmark/training
+            if self.training_mode == 'pretrain-hybrid':
+                original_input, masked_inputs, mask = self.masking_method(inputs[0] if self.set == 'train' else inputs, self.masking_ratio)
+                if self.set == 'train':
+                    inputs[0] = {'inputs': original_input, 'masked_inputs': masked_inputs, 'mask': mask}
+                else:
+                    inputs = {'inputs': original_input, 'masked_inputs': masked_inputs, 'mask': mask}
+                return inputs, labels
+            else:
+                # Normal MP return
+                inputs, masked_inputs, mask = self.masking_method(inputs, self.masking_ratio)
+                return {'inputs': inputs, 'masked_inputs': masked_inputs, 'mask': mask}, labels
 
         return inputs, labels
 

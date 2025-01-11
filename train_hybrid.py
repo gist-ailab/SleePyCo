@@ -2,12 +2,12 @@
 This file contains training logic for the Contrastive Learning Paradigm.
 
 Usage:
-    python train_crl_dlproj.py --config <path-to-json-config-file> [options]
+    python train_hybrid.py --config <path-to-json-config-file> [options]
 
 Example config files fo our project:
-    - configs/DLPROJ_pretrain_CRL_CNN_Attention_Sleep-EDF-2018.json
-    - configs/DLPROJ_pretrain_CRL_CNN_Sleep-EDF-2018.json
-    - configs/DLPROJ_pretrain_CRL_Transformer_Sleep-EDF-2018.json
+    - configs/DLPROJ_pretrain_Hybrid_CNN_Attention_Sleep-EDF-2018.json
+    - configs/DLPROJ_pretrain_Hybrid_CNN_Sleep-EDF-2018.json
+    - configs/DLPROJ_pretrain_Hybrid_Transformer_Sleep-EDF-2018.json
 """
 
 import json
@@ -35,9 +35,9 @@ class OneFoldTrainer:
         self.dset_cfg = config['dataset']
 
         # assert that the correct training mode is set: 'pretrain_mp'. This makes sure the models and dataset show correct behavior
-        if not 'mode' in self.tp_cfg.keys() and self.tp_cfg['mode'] == 'pretrain':
+        if not 'mode' in self.tp_cfg.keys() and self.tp_cfg['mode'] == 'pretrain-hybrid':
             raise ValueError(
-                'Running train_crl_dlproj.py, only mode pretrain is supported and must be declared in the config file')
+                'Running train_hybrid.py, only mode pretrain-hybrid is supported and must be declared in the config file')
 
         self.device = get_device(preference="cuda")
         print('[INFO] Config name: {}'.format(config['name']))
@@ -51,17 +51,20 @@ class OneFoldTrainer:
         self.writer = SummaryWriter(log_dir=os.path.join("logs", config['name'], f"fold-{fold}"))
 
         # load selected loss with its parameters (if these parameters are given) - only used if model has no internal loss calculation
-        assert 'loss' in self.tp_cfg.keys()
-        assert self.tp_cfg['loss'] in SUPPORTED_LOSS_FUNCTIONS
-        self.criterion = LOSS_MAP[self.tp_cfg['loss']](
-            **(self.tp_cfg['loss_params'] if 'loss_params' in self.tp_cfg.keys() else {}))
+        assert 'loss_mp' in self.tp_cfg.keys() and 'loss_crl' in self.tp_cfg.keys()
+        assert self.tp_cfg['loss_mp'] in SUPPORTED_LOSS_FUNCTIONS and self.tp_cfg['loss_crl'] in SUPPORTED_LOSS_FUNCTIONS
+        self.criterion_mp = LOSS_MAP[self.tp_cfg['loss_mp']](
+            **(self.tp_cfg['loss_params_mp'] if 'loss_params_mp' in self.tp_cfg.keys() else {}))
+        self.criterion_crl = LOSS_MAP[self.tp_cfg['loss_crl']](
+            **(self.tp_cfg['loss_params_crl'] if 'loss_params_crl' in self.tp_cfg.keys() else {}))
+        self.alpha_crl = float(self.tp_cfg['alpha_crl'])
 
         self.optimizer = optim.Adam(self.model.parameters(), lr=self.tp_cfg['lr'],
                                     weight_decay=self.tp_cfg['weight_decay'])
 
         # check if masking is performed internally, in that case throw a warning if masking is also activated in dataset
-        if "masking" in self.dset_cfg.keys() and self.dset_cfg["masking"]:
-            raise ValueError("masking is not supported for training with crl only!")
+        if "masking" in self.dset_cfg.keys() and not self.dset_cfg["masking"]:
+            raise ValueError("MAsking needs to be activated for hybrid training")
 
 
         self.ckpt_path = os.path.join('checkpoints', config['name'])
@@ -71,17 +74,20 @@ class OneFoldTrainer:
         # save initialized weights for case of testing
         self.early_stopping.save_checkpoint(-np.inf, self.model)
 
-    def switch_mode(self, mode):
+    def switch_mode(self, mode, set_masking=False):
         self.model.module.switch_mode(mode)
         self.model.to(self.device)
         self.cfg['training_params']['mode'] = mode
         self.tp_cfg['mode'] = mode
+        self.dset_cfg['masking'] = set_masking
+        self.cfg['dataset']['masking'] = set_masking
+        self.dset_masking_activated = ("masking" in self.dset_cfg.keys() and self.dset_cfg["masking"])
         # reinitialize datasets/loaders for new mode
         self.loader_dict = self.build_dataloader()
         # change criterion to classification loss if training classifier
         if mode == 'train-classifier':
             print('[INFO] Training classifier... thus setting criterion to be CrossEntropy]')
-            self.criterion = LOSS_MAP["cross_entropy"]()
+            self.criterion_classifier = LOSS_MAP["cross_entropy"]()
 
     def reload_best_model_weights(self):
         # reload best model weights from checkpoint
@@ -128,32 +134,45 @@ class OneFoldTrainer:
         """
         self.model.train()
         train_loss = 0
-        train_mode = 'classifier' if classifier else 'backbone'
+        train_mode = 'classifier' if self.tp_cfg['mode'] == 'train-classifier' else 'backbone'
+
 
         for i, (inputs, labels) in enumerate(self.loader_dict['train']):
-            # input-shape:(B, 1, 3000), labels.shape: (B,) -> dummy dim is removed in models that don't need it.
+            # inputs for backbone train: [{inputs, masked_inp, mask}, input_a, input_b]
+            # inputs for classifier training: single view batches.
             loss = 0
             labels = labels.view(-1).to(self.device)  # No effect in our case!
 
             if not classifier:
-                inputs = torch.cat([inputs[0], inputs[1]], dim=0).to(self.device)
+                masked_inp_dict = inputs[0]
+                masked_input = masked_inp_dict["masked_inputs"].to(self.device)
+                mask = masked_inp_dict["mask"].to(self.device)
+                original_inputs = masked_inp_dict["inputs"].to(self.device)
+                augmented_a, augmented_b = inputs[1].to(self.device), inputs[2].to(self.device)
+                inputs = torch.cat([masked_input, augmented_a, augmented_b], dim=0)
 
             inputs = inputs.to(self.device)
+            outputs = self.model(inputs) # list of outputs
 
-            outputs = self.model(inputs)[0]
-
-            # calculate loss based on predictions, gt and whether a mask is given or not
             if not classifier:
-                f1, f2 = torch.split(outputs, [labels.size(0), labels.size(0)], dim=0)
-                outputs = torch.cat([f1.unsqueeze(1), f2.unsqueeze(1)], dim=1)
-
-            loss += self.criterion(inputs, outputs=outputs, reduction='mean', mask=None, labels=labels if classifier else None) # We assume using the NTXent loss here!
+                reconstruction, _, _ = torch.split(outputs[0], [labels.size(0), labels.size(0), labels.size(0)], dim=0)
+                _, latent_1, latent_2 = torch.split(outputs[1], [labels.size(0), labels.size(0), labels.size(0)], dim=0)
+                latent_outputs = torch.cat([latent_1.unsqueeze(1), latent_2.unsqueeze(1)], dim=1)
+                mp_loss = self.criterion_mp(original_inputs, outputs=reconstruction, reduction='mean', mask=mask, labels=None)
+                crl_loss = self.criterion_crl(None, outputs=latent_outputs, mask=None, labels=None)
+                loss += mp_loss + self.alpha_crl * crl_loss
+                self.writer.add_scalar(f"train/loss-mp", mp_loss.item(), self.train_iter)
+                self.writer.add_scalar(f"train/loss-crl", crl_loss.item(), self.train_iter)
+            else:
+                # for classification we only expect logit output
+                outputs = outputs[0]
+                loss += self.criterion_classifier(inputs, outputs, reduction='mean', mask=None, labels=labels)
 
             self.optimizer.zero_grad()
             loss.backward()
             self.optimizer.step()
 
-            self.writer.add_scalar(f"train/loss-{train_mode}", loss.item(), self.train_iter)
+            self.writer.add_scalar(f"train/total-loss-{train_mode}", loss.item(), self.train_iter)
             train_loss += loss.item()
             self.train_iter += 1
 
@@ -227,27 +246,45 @@ class OneFoldTrainer:
         Runs the validation during model training on the val set.
         """
         self.model.eval()
-        eval_loss = 0
+        eval_loss, eval_mp_loss, eval_crl_loss = 0, 0, 0
 
         for i, (inputs, labels) in enumerate(self.loader_dict[mode]):
-            # input-shape:(B, 1, 3000), labels.shape: (B,) -> dummy dim is removed in models that don't need it.
+            # inputs loaded one view, construct val data for hybrid training here
 
             loss = 0
+            labels = labels.view(-1).to(self.device)
+            # Prepare Inputs
+            masked_inp_dict = inputs
+            masked_input = masked_inp_dict["masked_inputs"].to(self.device)
+            mask = masked_inp_dict["mask"].to(self.device)
+            original_inputs = masked_inp_dict["inputs"].to(self.device)
+            inputs = torch.cat([masked_input, original_inputs], dim=0)
+
             inputs = inputs.to(self.device)
-            outputs = self.model(inputs)[0]
+            outputs = self.model(inputs) # list of outputs
+            # Unpack outputs and calculate loss
+            reconstruction, _ = torch.split(outputs[0], [labels.size(0), labels.size(0)], dim=0)
+            _, latent_1 = torch.split(outputs[1], [labels.size(0), labels.size(0)], dim=0)
+            latent_outputs = latent_1.unsqueeze(1).repeat(1, 2, 1)
+            mp_loss = self.criterion_mp(original_inputs, outputs=reconstruction, reduction='mean', mask=mask, labels=None)
+            crl_loss = self.criterion_crl(None, outputs=latent_outputs, mask=None, labels=None)
+            loss += mp_loss + self.alpha_crl * crl_loss
 
             # calculate loss based on predictions, gt and whether a mask is given or not
-            outputs = outputs.unsqueeze(1).repeat(1, 2, 1)
-            loss += self.criterion(inputs, outputs=outputs, reduction='mean', mask=None, labels=None)  # We assume using the NTXent
-
             eval_loss += loss.item()
+            eval_mp_loss += mp_loss.item()
+            eval_crl_loss += crl_loss.item()
 
             progress_bar(i, len(self.loader_dict[mode]),
                          'Lr: %.4e | Loss: %.6f' % (get_lr(self.optimizer), eval_loss / (i + 1)))
 
         avg_eval_loss = eval_loss / len(self.loader_dict[mode])
+        avg_eval_mp_loss = eval_mp_loss / len(self.loader_dict[mode])
+        avg_eval_crl_loss = eval_crl_loss / len(self.loader_dict[mode])
         print(f"[INFO] {mode.capitalize()} Eval-Loss: {avg_eval_loss:.4f}")
         self.writer.add_scalar(f"{mode.capitalize()}/loss-avg-backbone", avg_eval_loss, self.train_iter)
+        self.writer.add_scalar(f"{mode.capitalize()}/loss-avg-mp", avg_eval_mp_loss, self.train_iter)
+        self.writer.add_scalar(f"{mode.capitalize()}/loss-avg-crl", avg_eval_crl_loss, self.train_iter)
         return eval_loss
 
     def log_metrics_to_tensorboard(self, y_true, y_pred):
@@ -263,6 +300,7 @@ class OneFoldTrainer:
         self.writer.add_scalar(f"Metrics/Accuracy", accuracy, self.train_iter)
         self.writer.add_scalar(f"Metrics/Macro_F1", macro_f1, self.train_iter)
         self.writer.add_scalar(f"Metrics/Cohen_Kappa", kappa, self.train_iter)
+
 
     def generate_and_store_embeddings(self):
         self.model.eval()
@@ -324,22 +362,22 @@ def main():
 
     # Generate embeddings for later benchmark of latent space - store to
     print("[INFO] Generate and store embeddings...")
-    trainer.switch_mode('gen-embeddings')
+    trainer.switch_mode('gen-embeddings', set_masking=False)
     trainer.reload_best_model_weights()
     trainer.generate_and_store_embeddings()
 
     #  Train classifier with frozen backbone
     print("[INFO] Training the classifier...")
-    trainer.switch_mode('train-classifier')
+    trainer.switch_mode('train-classifier', set_masking=False)
     trainer.train_classifier()
 
     # Perform classification
     print("[INFO] Run classification benchmarks...")
-    trainer.switch_mode('classification')
+    trainer.switch_mode('classification', set_masking=False)
     trainer.reload_best_model_weights()
     _, y_pred, y_true = trainer.benchmark_classifier()
     summarize_result(config, 1, y_pred, y_true)
-    # close tensorboard logger
+    # close tensorboard-writer
     trainer.writer.close()
 
 
@@ -358,9 +396,9 @@ def test(train_bb=False, gen_embed=False, train_classifier=False, benchmark_clas
             "seq_len": 1,
             "target_idx": 0,
             "root_dir": "./",
-            "masking": False,
+            "masking": True,
             "masking_type": "fixed_proportion_random",
-            "masking_ratio": 0.75
+            "masking_ratio": 0.35
         },
 
         "backbone": {
@@ -394,8 +432,10 @@ def test(train_bb=False, gen_embed=False, train_classifier=False, benchmark_clas
 
         "training_params": {
             "_comment": "All default sleepyco settings despite 'mode'. 'pretrain-mp' is passed to dataloader to use the base EEG epochs, not two-view as in 'pretrain'",
-            "mode": "pretrain",
-            "loss": "NTXent",
+            "mode": "pretrain-hybrid",
+            "loss_crl": "NTXent",
+            "loss_mp": "l2",
+            "alpha_crl": 0,
             "max_epochs": 2,
             "batch_size": 16,
             "lr": 0.0005,
@@ -420,18 +460,18 @@ def test(train_bb=False, gen_embed=False, train_classifier=False, benchmark_clas
         trainer.run()
     if gen_embed:
         print("[INFO] Generate and store embeddings...")
-        trainer.switch_mode('gen-embeddings')
+        trainer.switch_mode('gen-embeddings', set_masking=False)
         trainer.reload_best_model_weights()
         trainer.generate_and_store_embeddings()
     if train_classifier:
         #  Train classifier with frozen backbone
         print("[INFO] Training the classifier...")
-        trainer.switch_mode('train-classifier')
+        trainer.switch_mode('train-classifier', set_masking=False)
         trainer.train_classifier()
     if benchmark_classifier:
         # Perform classification
         print("[INFO] Run classification benchmarks...")
-        trainer.switch_mode('classification')
+        trainer.switch_mode('classification', set_masking=False)
         trainer.reload_best_model_weights()
         _, y_pred, y_true = trainer.benchmark_classifier()
         summarize_result(sample_cfg, 1, y_pred, y_true)

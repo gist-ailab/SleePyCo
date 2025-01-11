@@ -16,7 +16,7 @@ class MainModelDLProject(nn.Module):
     2. pretrain
     3. train-classifier
     4. classification:
-    4. TODO: hybrid-pretrain
+    4. pretrain-hybrid:
 
     In mode 1, the Model loaded needs to have the following outputs: reconstructed epoch (so full autoencoder must work)
     In mode 2, the Model loaded needs to have the following outputs: latent space representation (so the decoder is not needed)
@@ -45,7 +45,7 @@ class MainModelDLProject(nn.Module):
 
     def switch_mode(self, mode):
         self.training_mode = mode
-        assert self.training_mode in ["pretrain_mp", "pretrain", "train-classifier", "classification", "gen-embeddings"]
+        assert self.training_mode in ["pretrain-hybrid", "pretrain_mp", "pretrain", "train-classifier", "classification", "gen-embeddings"]
         assert self.model.is_mode_supported(self.training_mode)
         print('[INFO] Number of params of backbone: ',
               sum(p.numel() for p in self.model.parameters() if p.requires_grad))
