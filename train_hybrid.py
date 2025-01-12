@@ -53,44 +53,50 @@ class OneFoldTrainer:
         # load selected loss with its parameters (if these parameters are given) - only used if model has no internal loss calculation
         assert 'loss_mp' in self.tp_cfg.keys() and 'loss_crl' in self.tp_cfg.keys()
         assert self.tp_cfg['loss_mp'] in SUPPORTED_LOSS_FUNCTIONS and self.tp_cfg['loss_crl'] in SUPPORTED_LOSS_FUNCTIONS
+        # 4. change criterion to classification loss if training classifier
+        self.criterion_classifier = LOSS_MAP["cross_entropy"]()
         self.criterion_mp = LOSS_MAP[self.tp_cfg['loss_mp']](
-            **(self.tp_cfg['loss_params_mp'] if 'loss_params_mp' in self.tp_cfg.keys() else {}))
+                **(self.tp_cfg['loss_params_mp'] if 'loss_params_mp' in self.tp_cfg.keys() else {}))
         self.criterion_crl = LOSS_MAP[self.tp_cfg['loss_crl']](
-            **(self.tp_cfg['loss_params_crl'] if 'loss_params_crl' in self.tp_cfg.keys() else {}))
+                **(self.tp_cfg['loss_params_crl'] if 'loss_params_crl' in self.tp_cfg.keys() else {}))
         self.alpha_crl = float(self.tp_cfg['alpha_crl'])
-
-        self.optimizer = optim.Adam(self.model.parameters(), lr=self.tp_cfg['lr'],
-                                    weight_decay=self.tp_cfg['weight_decay'])
 
         # check if masking is performed internally, in that case throw a warning if masking is also activated in dataset
         if "masking" in self.dset_cfg.keys() and not self.dset_cfg["masking"]:
             raise ValueError("MAsking needs to be activated for hybrid training")
 
-
         self.ckpt_path = os.path.join('checkpoints', config['name'])
         self.ckpt_name = 'ckpt_fold-{0:02d}.pth'.format(self.fold)
-        self.early_stopping = EarlyStopping(patience=self.es_cfg['patience'], verbose=True, ckpt_path=self.ckpt_path,
-                                            ckpt_name=self.ckpt_name, mode=self.es_cfg['mode'])
-        # save initialized weights for case of testing
-        self.early_stopping.save_checkpoint(-np.inf, self.model)
+
+        # use switch mode to setup rest - initially we activate masking
+        self.dset_masking_activated = ("masking" in self.dset_cfg.keys() and self.dset_cfg["masking"])
+        self.switch_mode(self.tp_cfg['mode'], set_masking=self.dset_masking_activated)
 
     def switch_mode(self, mode, set_masking=False):
-        self.model.module.switch_mode(mode)
-        self.model.to(self.device)
+        """
+        Switch mode switches internal mode of main model and resets optimizer, dataloaders and early stopping
+        """
+        # 0. set variables
+        self.train_iter = 0
         self.cfg['training_params']['mode'] = mode
         self.tp_cfg['mode'] = mode
         self.dset_cfg['masking'] = set_masking
         self.cfg['dataset']['masking'] = set_masking
         self.dset_masking_activated = ("masking" in self.dset_cfg.keys() and self.dset_cfg["masking"])
-        # reinitialize datasets/loaders for new mode
-        self.loader_dict = self.build_dataloader()
-        # reset early stopping
+        # 1. Switch model mode (Main Model does setup and freezing parts(bb and classifier) internally)
+        self.model.module.switch_mode(mode)
+        self.model.to(self.device)
+        if not mode in ['gen-embeddings', 'classification']:
+            self.optimizer = optim.Adam([p for p in self.model.parameters() if p.requires_grad], lr=self.tp_cfg['lr'],
+                                        weight_decay=self.tp_cfg['weight_decay'])
+        # 2. Reset early stopping
         self.early_stopping = EarlyStopping(patience=self.es_cfg['patience'], verbose=True, ckpt_path=self.ckpt_path,
                                             ckpt_name=self.ckpt_name, mode=self.es_cfg['mode'])
-        # change criterion to classification loss if training classifier
-        if mode == 'train-classifier':
-            print('[INFO] Training classifier... thus setting criterion to be CrossEntropy]')
-            self.criterion_classifier = LOSS_MAP["cross_entropy"]()
+        # 3. reinitialize datasets/loaders for new mode
+        self.loader_dict = self.build_dataloader()
+        print('[INFO] Overall Number of trainable parameters in MainModel: ',
+              sum(p.numel() for p in self.model.parameters() if p.requires_grad))
+
 
     def reload_best_model_weights(self):
         # reload best model weights from checkpoint
@@ -100,10 +106,8 @@ class OneFoldTrainer:
 
     def build_model(self):
         model = MainModelDLProject(self.cfg)
-        print('[INFO] Number of params of model: ', sum(p.numel() for p in model.parameters() if p.requires_grad))
         model = torch.nn.DataParallel(model, device_ids=list(range(len(self.args.gpu.split(",")))))
         model.to(self.device)
-        print('[INFO] Model prepared, Device used: {} GPU:{}'.format(self.device, self.args.gpu))
         return model
 
     def build_dataloader(self):
@@ -126,6 +130,7 @@ class OneFoldTrainer:
         print('[INFO] Train-Batches: {}, Val-Batches: {}, Test-Batches: {}'.format(len(train_loader), len(val_loader), len(test_loader)))
         return {'train': train_loader, 'val': val_loader, 'test': test_loader}
 
+
     def train_one_epoch(self, epoch, classifier=False):
         """
         We modify this method from train_crl.py to be able to deal with only raw single eeg epochs and not the two-view
@@ -135,7 +140,7 @@ class OneFoldTrainer:
             classifier:bool     Specifies whether the training is for the classifier or the backbone. Difference is that in case of classifier training
                                 only one view epoch is loaded and CE loss is used.
         """
-        self.model.train()
+        self.model.module.activate_train_mode()
         train_loss = 0
         train_mode = 'classifier' if self.tp_cfg['mode'] == 'train-classifier' else 'backbone'
 
@@ -191,7 +196,7 @@ class OneFoldTrainer:
                 else:
                     val_loss = self.evaluate(mode='val')
                 self.early_stopping(None, val_loss, self.model)
-                self.model.train()
+                self.model.module.activate_train_mode()
                 if self.early_stopping.early_stop:
                     print("[INFO] Early stopping...")
                     break
@@ -305,17 +310,21 @@ class OneFoldTrainer:
         self.writer.add_scalar(f"Metrics/Cohen_Kappa", kappa, self.train_iter)
 
 
+
     def generate_and_store_embeddings(self):
         self.model.eval()
         embeddings = []
+        labels_list = []
         for i, (inputs, labels) in enumerate(self.loader_dict['test']):
             inputs = inputs.to(self.device)
             embedding = self.model(inputs)[0]
             embeddings.append(embedding)
+            labels_list.append(labels)
         embedding_torch = torch.cat(embeddings, dim=0)
+        all_labels = torch.cat(labels_list, dim=0)
         embeddings_path = os.path.join(self.ckpt_path, 'embeddings.pt')
         print("[INFO] Storing embeddings to {}".format(embeddings_path))
-        torch.save(embedding_torch, embeddings_path)
+        torch.save({"embeddings": embedding_torch, "labels": all_labels}, embeddings_path)
 
     def train_classifier(self):
         self.model.train()
@@ -440,17 +449,16 @@ def test(train_bb=False, gen_embed=False, train_classifier=False, benchmark_clas
             "loss_mp": "l2",
             "alpha_crl": 0,
             "max_epochs": 2,
-            "batch_size": 16,
+            "batch_size": 128,
             "lr": 0.0005,
             "weight_decay": 0.0001,
             "temperature": 0.07,
-            "val_period": 649,
+            "val_period": 325,
             "early_stopping": {
                 "mode": "min",
-                "patience": 4,
-                "_comment": "as validation is done at half an epoch, we max wait 4 validations(=2epochs)"
+                "patience": 8,
             },
-            "classifier_epochs": 1
+            "classifier_epochs": 3
         }
     }
     class Args:
@@ -458,9 +466,13 @@ def test(train_bb=False, gen_embed=False, train_classifier=False, benchmark_clas
             self.gpu = gpu
 
     trainer = OneFoldTrainer(Args("0"), 1, sample_cfg)
+
     if train_bb:
         print("[INFO] Run Backbone Training...")
         trainer.run()
+    else:
+        # save initialized weights for case of testing
+        trainer.early_stopping.save_checkpoint(-np.inf, trainer.model)
     if gen_embed:
         print("[INFO] Generate and store embeddings...")
         trainer.switch_mode('gen-embeddings', set_masking=False)
@@ -482,5 +494,5 @@ def test(train_bb=False, gen_embed=False, train_classifier=False, benchmark_clas
 
 if __name__ == "__main__":
     # Uncomment test for testing
-    #test(train_bb=False, gen_embed=False, train_classifier=False, benchmark_classifier=True)
+    #test(train_bb=True, gen_embed=True, train_classifier=True, benchmark_classifier=True)
     main()
