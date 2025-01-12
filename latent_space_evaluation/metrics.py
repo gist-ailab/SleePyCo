@@ -260,7 +260,7 @@ class MutualInformationMetric(BaseMetric):
     @staticmethod
     def _discretize_embeddings(embeddings, bins=10):
         # Discretize each dimension and combine them into a single label per sample
-        discretized = np.floor((embeddings - embeddings.min(axis=0)) / (embeddings.ptp(axis=0) + 1e-8) * bins).astype(int)
+        discretized = np.floor((embeddings - embeddings.min(axis=0)) / (np.ptp(embeddings, axis=0) + 1e-8) * bins).astype(int)
         combined = discretized[:, 0] * bins + discretized[:, 1]
         return combined
 
