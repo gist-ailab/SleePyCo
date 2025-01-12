@@ -48,14 +48,14 @@
         "alpha_crl": 1,
         "max_epochs": 500,
         "batch_size": 128,
-        "lr": 0.0005,
+        "lr": 0.001,
         "weight_decay": 0.0001,
-        "temperature": 0.07,
-        "val_period": 325,
+        "temperature": 0.1,
+        "val_period": 1298,
         "early_stopping": {
             "mode": "min",
-            "patience": 8,
-            "_comment": "as validation is done at quarter an epoch, we max wait 8 validations(=2epochs)"
+            "patience": 10,
+            "_comment": "validation is done at each epoch, we wait for max 10 validations(=10 epochs)"
         },
         "classifier_epochs": 100
     }

@@ -47,7 +47,7 @@
         "loss": "l2",
         "max_epochs": 500,
         "batch_size": 128,
-        "lr": 0.0005,
+        "lr": 0.001,
         "weight_decay": 0.0001,
         "temperature": 0.07,
         "val_period": 325,
