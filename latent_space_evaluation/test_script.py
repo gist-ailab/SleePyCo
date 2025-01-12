@@ -1,23 +1,8 @@
 import unittest
 import numpy as np
-from reducers import PCAReducer, TSNEReducer, UMAPReducer
-from plotter import EmbeddingPlotter
-from metrics import (
-    SilhouetteScoreMetric,
-    DaviesBouldinMetric,
-    AdjustedRandIndexMetric,
-    AdjustedMutualInfoMetric,
-    PurityMetric,
-    AverageEntropyMetric,
-    TrustworthinessMetric,
-    IntraClassCompactnessMetric,
-    InterClassSeparationMetric,
-    CompactnessToSeparationRatio,
-    MutualInformationMetric,
-    UniformityMetric,
-    AlignmentMetric,
-    BaseMetric
-)
+from latent_space_evaluation import *
+import pandas as pd
+from tqdm import tqdm
 
 class TestLatentSpaceEvaluation(unittest.TestCase):
     def setUp(self):
@@ -156,10 +141,7 @@ class TestLatentSpaceEvaluation(unittest.TestCase):
                 print(f"{metric_name}: {value}")
 
 def evaluate_embeddings(embeddings, labels, output_dir="./plots"):
-    """
-    Evaluate the latent space using reducers and metrics,
-    then optionally generate plots. Reuses existing logic from tests.
-    """
+    print("[INFO] Starting evaluation of embeddings...")
     # Initialize reducers
     reducers = {
         'PCA': PCAReducer(n_components=2, random_state=42),
@@ -199,7 +181,7 @@ def evaluate_embeddings(embeddings, labels, output_dir="./plots"):
     results = {}
     kmeans_labels = {}
 
-    for name, reducer in reducers.items():
+    for name, reducer in tqdm(reducers.items(), desc="[INFO] Applying reducers"):
         # Fit and transform embeddings
         reduced_embeddings = reducer.fit_transform(embeddings)
 
@@ -210,7 +192,7 @@ def evaluate_embeddings(embeddings, labels, output_dir="./plots"):
         # Initialize dictionary for this reducer's metrics
         results[name] = {}
 
-        for metric in metrics:
+        for metric in tqdm(metrics, desc=f"[INFO] Computing metrics for {name}", leave=False):
             if isinstance(metric, TrustworthinessMetric) or isinstance(metric, AlignmentMetric):
                 metric_value = metric.compute(
                     embeddings_2d=reduced_embeddings,
@@ -227,13 +209,18 @@ def evaluate_embeddings(embeddings, labels, output_dir="./plots"):
                 )
             results[name][metric.__class__.__name__] = metric_value
 
+    print("[INFO] Creating DataFrame of metric results...")
+    df = pd.DataFrame.from_dict({k: v for k, v in results.items()}, orient='index')
+    df.to_csv(f"{output_dir}/metrics.csv")
+    print("[INFO] Metrics saved to metrics.csv.")
+
     # Print all metric results
     for reducer_name, metric_results in results.items():
         print(f"\nMetrics for {reducer_name}:")
         for metric_name, value in metric_results.items():
             print(f"{metric_name}: {value}")
 
-    # Optionally generate plots
+    print("[INFO] Starting plotting of embeddings...")
     plotter = EmbeddingPlotter(
         output_dir=output_dir,
         palette="tab10",
@@ -245,6 +232,7 @@ def evaluate_embeddings(embeddings, labels, output_dir="./plots"):
     )
 
     for name, reduced_embeddings in zip(reducers.keys(), [reducer.fit_transform(embeddings) for reducer in reducers.values()]):
+        print(f"[INFO] Plotting {name} Reduction of Embeddings...")
         plotter.plot(
             embeddings=reduced_embeddings,
             labels=labels,

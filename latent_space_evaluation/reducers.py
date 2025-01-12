@@ -42,9 +42,8 @@ class TSNEReducer(BaseReducer):
             init='random',
             verbose=0
         )
-
+        
     def fit_transform(self, embeddings: np.ndarray) -> np.ndarray:
-
         reduced_embeddings = self.tsne.fit_transform(embeddings)
         return reduced_embeddings
 
@@ -77,7 +76,6 @@ class UMAPReducer(BaseReducer):
         )
 
     def fit_transform(self, embeddings: np.ndarray) -> np.ndarray:
-
         with warnings.catch_warnings():
             warnings.filterwarnings("ignore", category=UserWarning, module="umap")
             reduced_embeddings = self.umap_reducer.fit_transform(embeddings)
@@ -97,6 +95,5 @@ class PCAReducer(BaseReducer):
         self.pca = PCA(n_components=self.n_components, random_state=self.random_state)
 
     def fit_transform(self, embeddings: np.ndarray) -> np.ndarray:
-
         reduced_embeddings = self.pca.fit_transform(embeddings)
         return reduced_embeddings
