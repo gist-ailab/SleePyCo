@@ -142,3 +142,6 @@ logs/
 # Mac and IntelliJ
 .idea/
 .DS_Store
+dset/Sleep-EDF-2018/npz/
+run_training_dlproj.sh
+training_dlproj.out
