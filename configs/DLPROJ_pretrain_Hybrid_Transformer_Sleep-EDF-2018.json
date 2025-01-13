@@ -45,7 +45,7 @@
         "mode": "pretrain-hybrid",
         "loss_crl": "NTXent",
         "loss_mp": "l2",
-        "alpha_crl": 1,
+        "alpha_crl": 35,
         "max_epochs": 500,
         "batch_size": 128,
         "lr": 0.001,
