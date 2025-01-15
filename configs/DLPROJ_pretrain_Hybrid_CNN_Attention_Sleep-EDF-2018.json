@@ -1,49 +1,49 @@
 {
-    "_comment": "Pretraining Encoder backbone using MaskedPrediction AND CRL. Run train_hybrid.py script with this config. Also train classifier, benchmark it and generate embeddings",
+  "_comment": "Pretraining Encoder backbone using MaskedPrediction AND CRL. Run train_hybrid.py script with this config. Also train classifier, benchmark it and generate embeddings",
 
-    "dataset": {
-        "name": "Sleep-EDF-2018",
-        "eeg_channel": "Fpz-Cz",
-        "num_splits": 10,
-        "seq_len": 1,
-        "target_idx": 0,
-        "root_dir": "./",
-        "masking": true,
-        "masking_type": "fixed_proportion_random",
-        "masking_ratio": 0.25
+  "dataset": {
+    "name": "Sleep-EDF-2018",
+    "eeg_channel": "Fpz-Cz",
+    "num_splits": 10,
+    "seq_len": 1,
+    "target_idx": 0,
+    "root_dir": "./",
+    "masking": true,
+    "masking_type": "fixed_proportion_random",
+    "masking_ratio": 0.25
+  },
+
+  "backbone": {
+    "_comment": "Architectural Settings are hardcoded and not configured here in cfg",
+    "name": "Cnn+Attention",
+    "init_weights": false
+  },
+
+  "classifier": {
+    "_comment": "Classifier used to finetune it and benchmark -> linear Evaluation",
+    "name": "DLProjMLP",
+    "input_dim": 128,
+    "hidden_dim": 256,
+    "dropout": 0.5,
+    "num_classes": 5
+  },
+
+  "training_params": {
+    "mode": "pretrain-hybrid",
+    "loss_crl": "NTXent",
+    "loss_mp": "l2",
+    "alpha_crl": 35,
+    "max_epochs": 500,
+    "batch_size": 128,
+    "lr": 0.001,
+    "weight_decay": 0.0001,
+    "temperature": 0.1,
+    "val_period": 649,
+    "early_stopping": {
+      "mode": "min",
+      "patience": 5,
+      "_comment": "validation is done at each epoch, we wait for max 10 validations(=10 epochs)"
     },
-
-    "backbone": {
-        "_comment": "Architectural Settings are hardcoded and not configured here in cfg",
-        "name": "Cnn+Attention",
-        "init_weights": false
-    },
-
-    "classifier": {
-        "_comment": "Classifier used to finetune it and benchmark -> linear Evaluation",
-        "name": "DLProjMLP",
-        "input_dim": 128,
-        "hidden_dim": 256,
-        "dropout": 0.5,
-        "num_classes": 5
-    },
-
-    "training_params": {
-        "mode": "pretrain-hybrid",
-        "loss_crl": "NTXent",
-        "loss_mp": "l2",
-        "alpha_crl": 35,
-        "max_epochs": 500,
-        "batch_size": 128,
-        "lr": 0.001,
-        "weight_decay": 0.0001,
-        "temperature": 0.1,
-        "val_period": 1298,
-        "early_stopping": {
-            "mode": "min",
-            "patience": 10,
-            "_comment": "validation is done at each epoch, we wait for max 10 validations(=10 epochs)"
-        },
-        "classifier_epochs": 100
-    }
+    "classifier_epochs": 100
+  }
 }

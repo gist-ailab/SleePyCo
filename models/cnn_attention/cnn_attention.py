@@ -18,7 +18,7 @@ Returns:
 """
 class CnnBackboneWithAttn(BaseModel):
 
-    SUPPORTED_MODES = ["pretrain_mp", "pretrain", "train-classifier", "classification", "gen-embeddings"]  # support Contrastive Learning and Masked Prediction
+    SUPPORTED_MODES = ["pretrain-hybrid", "pretrain_mp", "pretrain", "train-classifier", "classification", "gen-embeddings"]  # support Contrastive Learning and Masked Prediction
     INTERNAL_LOSS_CALCULATION = False
     INTERNAL_MASKING = False
 
