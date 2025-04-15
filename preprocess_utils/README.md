@@ -25,3 +25,9 @@ python prepare_physio2018.py --data_dir $PHYSIO2018_DIR
 python prepare_shhs.py --data_dir $SHHS_DIR
 ```
 
+## Acknowledgement
+Thank you for providing the source code for preprocessing sleep staging datasets.
+- [DeepSleepNet](https://github.com/akaraspt/deepsleepnet)
+- [TinySleepNet](https://github.com/akaraspt/tinysleepnet)
+- [Sleep-Staging-SHHS](https://github.com/drasros/sleep_staging_shhs)
+
