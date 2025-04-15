@@ -25,7 +25,7 @@ This repo is the official implementation of "***SleePyCo: Automatic Sleep Scorin
 - [X] (2023.11.18) 🎉Online publication is available!🎉
 - [X] (2024.05.20) Add source code for plot hypnogram in ```./tools```
 - [X] (2024.05.20) Add source code for test on a sample of custom data, refer to ```test_custom.py```
-- [ ] Scripts for preprocessing MASS, Physio2018, SHHS
+- [X] (2025.04.16) Scripts for preprocessing MASS, Physio2018, SHHS, refer to ```preprocess_utils```
 
 
 ## Getting Started
